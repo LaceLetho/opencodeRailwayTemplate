@@ -10,9 +10,15 @@ RUN apt-get update \
     git \
   && rm -rf /var/lib/apt/lists/*
 
-# Install Bun
+# Install Bun (official installer with bash)
 RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:${PATH}"
+
+# Add Bun to PATH for subsequent commands
+ENV BUN_INSTALL="/root/.bun"
+ENV PATH="$BUN_INSTALL/bin:$PATH"
+
+# Verify bun works
+RUN bun --version
 
 # Install OpenCode CLI
 RUN bun install -g opencode
