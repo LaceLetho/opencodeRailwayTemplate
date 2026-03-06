@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": [
+    "MiniMax"
+  ],
+  "enableAllProjectMcpServers": true
+}
