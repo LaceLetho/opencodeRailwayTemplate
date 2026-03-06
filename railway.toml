@@ -1,0 +1,25 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+
+# A persistent volume must be mounted at /data.
+requiredMountPath = "/data"
+
+[variables]
+# Internal port for OpenWork server (proxy forwards here).
+OPENWORK_PORT = "8787"
+# Sidecar binaries are cached here across restarts.
+OPENWORK_SIDECAR_DIR = "/data/sidecars"
+# OpenWork server state directory.
+OPENWORK_DATA_DIR = "/data/openwork"
+# OpenCode workspace directory.
+OPENCODE_WORKSPACE = "/data/workspace"
+# NOTE: Do NOT set PORT here. Railway injects it at runtime.
+# Required user variables (set in Railway dashboard):
+#   SETUP_PASSWORD  — HTTP Basic Auth password
+#   ANTHROPIC_API_KEY / MINIMAX_API_KEY / GLM_API_KEY — at least one
+#   OPENCODE_MODEL  — optional, e.g. anthropic/claude-sonnet-4-5
