@@ -53,7 +53,7 @@ fi
 
 # ── Start OpenCode web server (foreground) ─────────────────────────────────
 # OpenCode's web mode proxies UI to app.opencode.ai and runs API on the specified port
-exec opencode web \
+exec opencode-ai web \
   --port "${OPENCODE_PORT:-4096}" \
   --hostname 0.0.0.0 \
   --workspace /data/workspace \

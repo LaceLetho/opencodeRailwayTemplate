@@ -21,7 +21,7 @@ ENV PATH="$BUN_INSTALL/bin:$PATH"
 RUN bun --version
 
 # Install OpenCode CLI
-RUN bun install -g opencode
+RUN bun install -g opencode-ai
 
 # Persist workspace and state to Railway volume
 ENV OPENCODE_WORKSPACE=/data/workspace
