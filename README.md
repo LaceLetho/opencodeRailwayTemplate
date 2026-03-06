@@ -4,7 +4,7 @@ One-click Railway deploy for [OpenCode](https://opencode.ai) + [OpenWork](https:
 
 ## Deploy to Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/YOUR_TEMPLATE_ID)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/f0oQvM?referralCode=Se0h8C&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## What this deploys
 
