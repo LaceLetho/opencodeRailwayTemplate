@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Add Bun to PATH
+export BUN_INSTALL="/root/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
 # Ensure persistent directories exist
 mkdir -p /data/workspace /data/state
 
@@ -53,7 +57,7 @@ fi
 
 # ── Start OpenCode web server (foreground) ─────────────────────────────────
 # OpenCode's web mode proxies UI to app.opencode.ai and runs API on the specified port
-exec opencode-ai web \
+exec bunx opencode-ai web \
   --port "${OPENCODE_PORT:-4096}" \
   --hostname 0.0.0.0 \
   --workspace /data/workspace \
