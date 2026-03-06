@@ -29,11 +29,15 @@ export function createProxyServer() {
     }
   })
 
+  // Health check endpoint (bypass auth)
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true })
   })
 
+  // Auth middleware for all other routes
   app.use((req, res, next) => {
+    // Skip auth for health check
+    if (req.path === "/healthz") return next()
     if (checkAuth(req)) return next()
     res.set("www-authenticate", 'Basic realm="OpenCode"')
     res.status(401).send("Unauthorized")

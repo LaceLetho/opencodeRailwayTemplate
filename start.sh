@@ -15,9 +15,6 @@ if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
 fi
 
 # ── Generate opencode.json config from env vars ─────────────────────────────
-# Build provider JSON only for keys that are set.
-# Anthropic auto-discovers ANTHROPIC_API_KEY; no explicit block needed.
-
 PROVIDERS="{}"
 
 if [ -n "${MINIMAX_API_KEY:-}" ]; then
@@ -55,17 +52,24 @@ node -e "
   };
   const providers = JSON.parse(process.env.PROVIDERS || '{}');
   if (Object.keys(providers).length > 0) cfg.provider = providers;
-  // Remove undefined values
   Object.keys(cfg).forEach(k => cfg[k] === undefined && delete cfg[k]);
   fs.writeFileSync('/data/opencode.json', JSON.stringify(cfg, null, 2));
 " PROVIDERS="$PROVIDERS"
 
-# ── Start OpenCode web server (foreground) ─────────────────────────────────
-# OpenCode's web mode proxies UI to app.opencode.ai and runs API on the specified port
-# Auth is handled via environment variables
+# ── Start OpenCode server (background) ───────────────────────────────────────
 export OPENCODE_SERVER_PASSWORD
 export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-openwork}"
 
-exec bunx opencode-ai web \
+bunx opencode-ai web \
   --port "${OPENCODE_PORT:-4096}" \
-  --hostname 0.0.0.0
+  --hostname 0.0.0.0 &
+
+OPENCODE_PID=$!
+echo "OpenCode started (pid $OPENCODE_PID)"
+
+# Wait for OpenCode to be ready
+sleep 5
+
+# ── Start proxy server (foreground) ─────────────────────────────────────────
+# Proxy handles HTTP Basic Auth and forwards to OpenCode
+exec node src/server.js
