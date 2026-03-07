@@ -44,7 +44,12 @@ export function createProxyServer() {
   })
 
   app.use((req, res) => {
-    proxy.web(req, res, { target: TARGET })
+    proxy.web(req, res, {
+      target: TARGET,
+      headers: {
+        "x-opencode-directory": process.env.OPENCODE_WORKSPACE || "/data/workspace",
+      },
+    })
   })
 
   const server = http.createServer(app)
@@ -55,7 +60,12 @@ export function createProxyServer() {
       socket.destroy()
       return
     }
-    proxy.ws(req, socket, head, { target: TARGET.replace("http://", "ws://") })
+    proxy.ws(req, socket, head, {
+      target: TARGET.replace("http://", "ws://"),
+      headers: {
+        "x-opencode-directory": process.env.OPENCODE_WORKSPACE || "/data/workspace",
+      },
+    })
   })
 
   return server
