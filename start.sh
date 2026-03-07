@@ -70,11 +70,11 @@ export OPENCODE_SERVER_PASSWORD
 export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-openwork}"
 export OPENCODE_CONFIG_DIR="/data/config"
 
-# Start OpenCode server (background)
-# Working directory is now set to /data/workspace in Dockerfile
-bunx opencode-ai web \
+# Start OpenCode server (background) in /data/workspace directory
+# This sets the default project directory to /data/workspace
+(cd /data/workspace && bunx opencode-ai web \
   --port "${OPENCODE_PORT:-4096}" \
-  --hostname 0.0.0.0 &
+  --hostname 0.0.0.0) &
 
 OPENCODE_PID=$!
 echo "OpenCode started (pid $OPENCODE_PID)"
@@ -83,5 +83,6 @@ echo "OpenCode started (pid $OPENCODE_PID)"
 sleep 5
 
 # ── Start proxy server (foreground) ─────────────────────────────────────────
-# Proxy handles HTTP Basic Auth and forwards to OpenCode
+# Proxy must run from /app where dependencies are installed
+cd /app
 exec bun src/server-bun.js
