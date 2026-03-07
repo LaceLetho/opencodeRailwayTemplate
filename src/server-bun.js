@@ -94,7 +94,6 @@ function proxyRequest(req, res, targetPort, extraHeaders = {}) {
       ...req.headers,
       ...extraHeaders,
       authorization: authHeader,
-      "x-opencode-directory": OPENCODE_WORKSPACE,
     },
   }
 
@@ -197,9 +196,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (checkAuth(req)) {
-    return proxyRequest(req, res, OPENCODE_PORT, {
-      "x-opencode-directory": OPENCODE_WORKSPACE,
-    })
+    return proxyRequest(req, res, OPENCODE_PORT, {})
   }
 
   // Show login page for unauthenticated requests
@@ -244,7 +241,6 @@ server.on("upgrade", (req, res) => {
     method: "GET",
     headers: {
       ...req.headers,
-      "x-opencode-directory": OPENCODE_WORKSPACE,
       connection: "upgrade",
       upgrade: "websocket",
     },
