@@ -3,21 +3,13 @@ builder = "dockerfile"
 
 [deploy]
 healthcheckPath = "/healthz"
-healthcheckTimeout = 300
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 
-# A persistent volume must be mounted at /data.
+# A persistent volume must be mounted at /data
 requiredMountPath = "/data"
 
-[variables]
-# Internal port for OpenCode server (proxy forwards here).
-OPENCODE_PORT = "4096"
-# OpenCode workspace directory.
-OPENCODE_WORKSPACE = "/data/workspace"
-# OpenCode state directory.
-OPENCODE_STATE = "/data/state"
-# NOTE: Do NOT set PORT here. Railway injects it at runtime.
 # Required user variables (set in Railway dashboard):
-#   OPENCODE_SERVER_PASSWORD — HTTP Basic Auth password (for browser access)
-#   ANTHROPIC_API_KEY / MINIMAX_API_KEY / GLM_API_KEY — at least one
-#   OPENCODE_MODEL  — optional, e.g. anthropic/claude-sonnet-4-5
+#   OPENCODE_SERVER_PASSWORD — HTTP Basic Auth password (required)
+#   ANTHROPIC_API_KEY / MINIMAX_API_KEY / GLM_API_KEY — at least one API key
+#   OPENCODE_MODEL — optional, e.g. anthropic/claude-sonnet-4-5

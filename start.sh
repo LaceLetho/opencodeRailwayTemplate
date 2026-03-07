@@ -1,84 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Add Bun to PATH
-export BUN_INSTALL="/root/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+# Railway 注入的端口
+PORT="${PORT:-8080}"
 
-# Use HOME to store data in persistent volume
-# This sets OpenCode's default workspace to /data/workspace
-export HOME="/data"
-
-# Ensure persistent directories exist
-mkdir -p /data/workspace /data/state /data/config /data/cache
-
-# ── Validate required env ────────────────────────────────────────────────────
+# 验证必需的环境变量
 if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
   echo "ERROR: OPENCODE_SERVER_PASSWORD is required" >&2
   exit 1
 fi
 
-# ── Generate opencode.json config from env vars ─────────────────────────────
-PROVIDERS="{}"
+# 创建持久化目录
+mkdir -p /data/workspace
 
-if [ -n "${MINIMAX_API_KEY:-}" ]; then
-  MINIMAX_URL="${MINIMAX_BASE_URL:-https://api.minimax.chat/v1}"
-  PROVIDERS=$(node -e "
-    const p = JSON.parse(process.env.PROVIDERS || '{}');
-    p.minimax = {
-      npm: '@ai-sdk/openai-compatible',
-      options: { name: 'minimax', apiKey: process.env.MINIMAX_API_KEY, baseURL: process.env.MINIMAX_URL }
-    };
-    process.stdout.write(JSON.stringify(p));
-  " PROVIDERS="$PROVIDERS" MINIMAX_API_KEY="$MINIMAX_API_KEY" MINIMAX_URL="$MINIMAX_URL")
-fi
+# 进入工作目录并启动 OpenCode Web 服务
+cd /data/workspace
 
-if [ -n "${GLM_API_KEY:-}" ]; then
-  GLM_URL="${GLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}"
-  PROVIDERS=$(node -e "
-    const p = JSON.parse(process.env.PROVIDERS || '{}');
-    p.zhipu = {
-      npm: '@ai-sdk/openai-compatible',
-      options: { name: 'zhipu', apiKey: process.env.GLM_API_KEY, baseURL: process.env.GLM_URL }
-    };
-    process.stdout.write(JSON.stringify(p));
-  " PROVIDERS="$PROVIDERS" GLM_API_KEY="$GLM_API_KEY" GLM_URL="$GLM_URL")
-fi
+echo "Starting OpenCode Web on port $PORT..."
+echo "Workspace: $(pwd)"
 
-# Write config file
-# NOTE: workspace and state are NOT valid config fields - they are controlled via XDG env vars
-node -e "
-  const fs = require('fs');
-  const cfg = {
-    '\$schema': 'https://opencode.ai/config.json',
-    model: process.env.OPENCODE_MODEL || undefined
-  };
-  const providers = JSON.parse(process.env.PROVIDERS || '{}');
-  if (Object.keys(providers).length > 0) cfg.provider = providers;
-  Object.keys(cfg).forEach(k => cfg[k] === undefined && delete cfg[k]);
-  fs.writeFileSync('/data/config/opencode.json', JSON.stringify(cfg, null, 2));
-" PROVIDERS="$PROVIDERS"
-
-echo "Config content:"
-cat /data/config/opencode.json
-
-# ── Start OpenCode server (background) ───────────────────────────────────────
-export OPENCODE_SERVER_PASSWORD
-export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-openwork}"
-export OPENCODE_CONFIG_DIR="/data/config"
-
-# Start OpenCode server (background) in /data/workspace directory
-# This sets the default project directory to /data/workspace
-chmod +x /app/start-opencode.sh
-/app/start-opencode.sh &
-
-OPENCODE_PID=$!
-echo "OpenCode started (pid $OPENCODE_PID)"
-
-# Wait for OpenCode to be ready
-sleep 5
-
-# ── Start proxy server (foreground) ─────────────────────────────────────────
-# Proxy must run from /app where dependencies are installed
-cd /app
-exec bun src/server-bun.js
+# 启动 opencode web
+# --port: 使用 Railway 提供的端口
+# --hostname 0.0.0.0: 让网络可访问
+exec bunx opencode web --port "$PORT" --hostname 0.0.0.0

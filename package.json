@@ -1,18 +1,7 @@
 {
   "name": "opencode-railway-template",
   "private": true,
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
-    "start": "bash start.sh",
-    "dev:proxy": "node src/server.js",
-    "test": "node --test",
-    "lint": "node -c src/server.js"
-  },
-  "dependencies": {
-    "express": "^5.1.0",
-    "http-proxy": "^1.18.1"
+    "start": "bash start.sh"
   }
 }
