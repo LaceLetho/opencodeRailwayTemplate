@@ -14,7 +14,8 @@ fi
 mkdir -p /data/workspace
 
 # 设置配置目录
-export OPENCODE_CONFIG_DIR="/data/workspace"
+export OPENCODE_CONFIG_DIR="/data/.config/opencode"
+export OPENCODE_CONFIG="/data/.config/opencode/config.json"
 
 # 进入工作目录并启动 OpenCode Web 服务
 cd /data/workspace
