@@ -82,4 +82,4 @@ sleep 5
 
 # ── Start proxy server (foreground) ─────────────────────────────────────────
 # Proxy handles HTTP Basic Auth and forwards to OpenCode
-exec node src/server.js
+exec bun src/server-bun.js
