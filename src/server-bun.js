@@ -85,10 +85,16 @@ function proxyRequest(req, res, targetPort, extraHeaders = {}) {
   const password = process.env.OPENCODE_SERVER_PASSWORD ?? ""
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
 
+  // Rewrite directory parameter: change "/" to "/data/workspace" to persist workspace
+  let proxyPath = req.url
+  if (proxyPath.includes("directory=%2F&") || proxyPath.endsWith("directory=%2F")) {
+    proxyPath = proxyPath.replace(/directory=%2F(&?)/g, "directory=%2Fdata%2Fworkspace$1")
+  }
+
   const options = {
     hostname: "127.0.0.1",
     port: targetPort,
-    path: req.url,
+    path: proxyPath,
     method: req.method,
     headers: {
       ...req.headers,
@@ -234,10 +240,16 @@ server.on("upgrade", (req, res) => {
     return
   }
 
+  // Rewrite directory parameter for WebSocket too
+  let proxyPath = req.url
+  if (proxyPath.includes("directory=%2F&") || proxyPath.endsWith("directory=%2F")) {
+    proxyPath = proxyPath.replace(/directory=%2F(&?)/g, "directory=%2Fdata%2Fworkspace$1")
+  }
+
   const options = {
     hostname: "127.0.0.1",
     port: OPENCODE_PORT,
-    path: req.url,
+    path: proxyPath,
     method: "GET",
     headers: {
       ...req.headers,
