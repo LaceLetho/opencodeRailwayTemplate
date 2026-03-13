@@ -29,8 +29,23 @@ cd /data/workspace
 echo "Starting OpenCode Web on port $PORT..."
 echo "Workspace: $(pwd)"
 
-# 启动 opencode web
+# 启动 opencode web 并通过 wrapper 路由日志
 # --port: 使用 Railway 提供的端口
 # --hostname 0.0.0.0: 让网络可访问
-# 添加 --print-logs 使日志输出到 stderr，可在 Railway Dashboard 查看
-exec bunx opencode web --port "$PORT" --hostname 0.0.0.0 --print-logs
+# --print-logs: 使日志输出到 stderr，然后通过管道路由到不同流
+#
+# 日志路由规则：
+# - DEBUG/INFO -> stdout (Railway 显示为 info 级别)
+# - WARN/ERROR -> stderr (Railway 显示为 error 级别)
+bunx opencode web --port "$PORT" --hostname 0.0.0.0 --print-logs 2>&1 | while IFS= read -r line; do
+  case "$line" in
+    ERROR*|WARN*)
+      # 错误和警告输出到 stderr
+      echo "$line" >&2
+      ;;
+    *)
+      # 其他所有日志（INFO, DEBUG等）输出到 stdout
+      echo "$line"
+      ;;
+  esac
+done
