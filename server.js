@@ -10,6 +10,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || "8080";
 const PASSWORD = process.env.OPENCODE_SERVER_PASSWORD;
+const logLevel = process.env.LOG_LEVEL?.toUpperCase() || "WARN";
 
 if (!PASSWORD) {
   console.error("ERROR: OPENCODE_SERVER_PASSWORD is required");
@@ -34,11 +35,13 @@ process.env.OPENCODE_CONFIG = "/data/.config/opencode/config.json";
 
 console.log(`Starting OpenCode Web on port ${PORT}...`);
 console.log(`Workspace: /data/workspace`);
+console.log(`Log level: ${logLevel} (set LOG_LEVEL env var to change: DEBUG, INFO, WARN, ERROR)`);
 
 // 启动 opencode web
+// --log-level: 控制日志输出级别，减少 Railway Dashboard 日志噪音
 const opencode = spawn(
   "bunx",
-  ["opencode", "web", "--port", PORT, "--hostname", "0.0.0.0", "--print-logs"],
+  ["opencode", "web", "--port", PORT, "--hostname", "0.0.0.0", "--print-logs", "--log-level", logLevel],
   {
     cwd: "/data/workspace",
     stdio: ["ignore", "pipe", "pipe"], // 捕获 stdout 和 stderr
