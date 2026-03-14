@@ -19,19 +19,8 @@ One-click Railway deploy for [OpenCode](https://opencode.ai) — an always-on au
 | Variable | Description |
 |----------|-------------|
 | `OPENCODE_SERVER_PASSWORD` | Password for HTTP Basic Auth (username: `opencode`) |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API key |
-| `MINIMAX_API_KEY` | Minimax API key (optional) |
-| `GLM_API_KEY` | ZhipuAI GLM API key (optional) |
 
 At least one AI provider key must be set.
-
-## Optional variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENCODE_MODEL` | `anthropic/claude-sonnet-4-5` | Default model |
-| `MINIMAX_BASE_URL` | `https://api.minimax.chat/v1` | Minimax API base URL |
-| `GLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | ZhipuAI API base URL |
 
 ## Two ways to use
 
