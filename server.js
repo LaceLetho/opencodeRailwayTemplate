@@ -8,6 +8,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+const stream = require("stream");
 const httpProxy = require("http-proxy");
 
 const PORT = process.env.PORT || "8080";
@@ -216,6 +217,16 @@ async function forwardRequest(req, body) {
   return response;
 }
 
+// 读取请求体的辅助函数
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 // 创建 HTTP 服务器
 const server = http.createServer(async (req, res) => {
   // 检查 Basic Auth
@@ -233,15 +244,21 @@ const server = http.createServer(async (req, res) => {
     !req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
 
   try {
+    // 对于 POST/PUT/PATCH 请求，需要读取请求体
+    let body = null;
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      body = await readRequestBody(req);
+    }
+
     if (isHtmlRequest) {
       // 先获取响应内容
-      const targetRes = await forwardRequest(req);
-      const body = await targetRes.text();
+      const targetRes = await forwardRequest(req, body);
+      const responseBody = await targetRes.text();
 
       // 检查是否是 HTML
-      if (body.includes('<!DOCTYPE') || body.includes('<!doctype') || body.includes('<html')) {
+      if (responseBody.includes('<!DOCTYPE') || responseBody.includes('<!doctype') || responseBody.includes('<html')) {
         // 注入脚本
-        const modifiedBody = body.replace(/<\/head>/i, INJECTED_SCRIPT + '</head>');
+        const modifiedBody = responseBody.replace(/<\/head>/i, INJECTED_SCRIPT + '</head>');
 
         // 设置响应头
         res.writeHead(targetRes.status, {
@@ -255,14 +272,16 @@ const server = http.createServer(async (req, res) => {
       // 不是 HTML，直接返回
       res.writeHead(targetRes.status, {
         'content-type': targetRes.headers.get('content-type') || 'text/plain',
-        'content-length': Buffer.byteLength(body),
+        'content-length': Buffer.byteLength(responseBody),
       });
-      res.end(body);
+      res.end(responseBody);
       return;
     }
 
-    // 非 HTML 请求使用代理
-    proxy.web(req, res);
+    // 非 HTML 请求使用代理，需要传递请求体
+    proxy.web(req, res, {
+      buffer: body ? stream.Readable.from(body) : undefined
+    });
   } catch (err) {
     console.error("[server error]", err.message);
     if (!res.headersSent) {
