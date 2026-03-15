@@ -4,11 +4,9 @@
  * 提供优雅关闭、日志分类和 Basic Auth 代理功能
  */
 
+const http = require("http");
 const { spawn } = require("child_process");
 const fs = require("fs");
-const path = require("path");
-const http = require("http");
-const httpProxy = require("http-proxy");
 
 const PORT = process.env.PORT || "8080";
 const INTERNAL_PORT = process.env.INTERNAL_PORT || "18080";
@@ -115,21 +113,6 @@ async function waitForOpencode(timeoutMs = 30000) {
   return false;
 }
 
-// 创建代理服务器
-const proxy = httpProxy.createProxyServer({
-  target: `http://127.0.0.1:${INTERNAL_PORT}`,
-  ws: true,
-  changeOrigin: true,
-});
-
-proxy.on("error", (err, _req, res) => {
-  console.error("[proxy error]", err.message);
-  if (res && !res.headersSent) {
-    res.writeHead(502, { "Content-Type": "text/plain" });
-    res.end("Gateway error\n");
-  }
-});
-
 // Basic Auth 验证
 function checkAuth(req) {
   const auth = req.headers.authorization;
@@ -202,56 +185,8 @@ const INJECTED_SCRIPT = `
 </script>
 `;
 
-// 转发请求到内部 OpenCode 服务
-async function forwardRequest(req, body) {
-  const headers = {};
-
-  // 只复制必要的 headers，确保 content-type 被正确保留
-  const headersToKeep = ['content-type', 'accept', 'accept-encoding', 'accept-language', 'cache-control', 'connection'];
-  for (const key of headersToKeep) {
-    if (req.headers[key]) {
-      headers[key] = req.headers[key];
-    }
-  }
-
-  // 如果有 body，确保 content-type 存在
-  if (body && body.length > 0) {
-    if (!headers['content-type']) {
-      // 尝试从 body 内容推断类型
-      const bodyStr = body.toString();
-      if (bodyStr.startsWith('{') || bodyStr.startsWith('[')) {
-        headers['content-type'] = 'application/json';
-      }
-    }
-  }
-
-  const url = `http://127.0.0.1:${INTERNAL_PORT}${req.url}`;
-  console.log(`[debug] forwardRequest ${req.method} ${url}`);
-  console.log(`[debug] headers: ${JSON.stringify(headers)}`);
-  console.log(`[debug] body: ${body ? body.length : 0} bytes, content: ${body ? body.toString().substring(0, 200) : 'null'}`);
-
-  const response = await fetch(url, {
-    method: req.method,
-    headers,
-    body: body ? Buffer.from(body) : undefined,
-  });
-
-  console.log(`[debug] forwardRequest response status: ${response.status}`);
-  return response;
-}
-
-// 读取请求体的辅助函数
-function readRequestBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
-// 创建 HTTP 服务器
-const server = http.createServer(async (req, res) => {
+// 创建代理服务器
+const server = http.createServer((req, res) => {
   // 检查 Basic Auth
   if (!checkAuth(req)) {
     res.writeHead(401, {
@@ -270,80 +205,106 @@ const server = http.createServer(async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const isSSE = acceptHeader.includes('text/event-stream');
 
-  // 对于SSE请求，使用代理直接转发，以便正确处理流式响应
-  if (isSSE) {
-    console.log(`[SSE] Forwarding ${req.url} via proxy`);
-    proxy.web(req, res);
-    return;
-  }
+  // 准备转发 headers
+  const forwardHeaders = { ...req.headers };
+  delete forwardHeaders.host;
+  delete forwardHeaders.authorization; // 内部服务器不需要 auth
 
-  try {
-    // 对于 POST/PUT/PATCH 请求，需要读取请求体
-    let body = null;
-    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-      body = await readRequestBody(req);
-      console.log(`[debug] ${req.method} ${req.url} body length: ${body ? body.length : 0}`);
-      console.log(`[debug] original content-type: ${req.headers['content-type']}`);
-    }
+  const options = {
+    hostname: "127.0.0.1",
+    port: INTERNAL_PORT,
+    path: req.url,
+    method: req.method,
+    headers: forwardHeaders,
+  };
 
-    if (isHtmlRequest) {
-      // 先获取响应内容
-      const targetRes = await forwardRequest(req, body);
-      const responseBody = await targetRes.text();
+  // 对于 HTML 请求，需要获取完整响应并注入脚本
+  if (isHtmlRequest && !isSSE) {
+    const proxyReq = http.request(options, (proxyRes) => {
+      const contentType = proxyRes.headers['content-type'] || '';
 
-      // 检查是否是 HTML
-      if (responseBody.includes('<!DOCTYPE') || responseBody.includes('<!doctype') || responseBody.includes('<html')) {
-        // 注入脚本
-        const modifiedBody = responseBody.replace(/<\/head>/i, INJECTED_SCRIPT + '</head>');
+      // 检查是否是 HTML 响应
+      if (contentType.includes('text/html')) {
+        // 收集完整响应体
+        let body = '';
+        proxyRes.setEncoding('utf8');
+        proxyRes.on('data', (chunk) => { body += chunk; });
+        proxyRes.on('end', () => {
+          // 注入脚本到 </head> 前
+          const modifiedBody = body.replace(/<\/head>/i, INJECTED_SCRIPT + '</head>');
 
-        // 设置响应头
-        res.writeHead(targetRes.status, {
-          'content-type': 'text/html; charset=UTF-8',
-          'content-length': Buffer.byteLength(modifiedBody),
+          // 发送修改后的响应
+          res.writeHead(proxyRes.statusCode, {
+            ...proxyRes.headers,
+            'content-length': Buffer.byteLength(modifiedBody),
+          });
+          res.end(modifiedBody);
         });
-        res.end(modifiedBody);
-        return;
+      } else {
+        // 不是 HTML，直接流式转发
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
       }
+    });
 
-      // 不是 HTML，直接返回
-      res.writeHead(targetRes.status, {
-        'content-type': targetRes.headers.get('content-type') || 'text/plain',
-        'content-length': Buffer.byteLength(responseBody),
-      });
-      res.end(responseBody);
-      return;
-    }
+    proxyReq.on('error', (err) => {
+      console.error('[proxy error]', err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end('Gateway error\n');
+      }
+    });
 
-    // 非 HTML 请求直接转发
-    const targetRes = await forwardRequest(req, body);
+    req.pipe(proxyReq);
+  } else {
+    // 非 HTML 请求或 SSE 请求，直接流式转发
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
 
-    // 复制响应头
-    const responseHeaders = {};
-    for (const [key, value] of targetRes.headers) {
-      responseHeaders[key] = value;
-    }
+    proxyReq.on('error', (err) => {
+      console.error('[proxy error]', err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end('Gateway error\n');
+      }
+    });
 
-    // 读取响应体
-    const responseBody = await targetRes.arrayBuffer();
-
-    // 发送响应
-    res.writeHead(targetRes.status, responseHeaders);
-    res.end(Buffer.from(responseBody));
-  } catch (err) {
-    console.error("[server error]", err.message);
-    if (!res.headersSent) {
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      res.end("Gateway error\n");
-    }
+    req.pipe(proxyReq);
   }
 });
 
 // WebSocket 升级处理
 server.on('upgrade', (req, socket, head) => {
   // WebSocket 连接跳过 Basic Auth 检查
-  // 用户已经通过页面访问进行了身份验证
   // 浏览器不允许在 WebSocket URL 中使用 credentials
-  proxy.ws(req, socket, head);
+  const options = {
+    hostname: "127.0.0.1",
+    port: INTERNAL_PORT,
+    path: req.url,
+    headers: {
+      ...req.headers,
+      host: `127.0.0.1:${INTERNAL_PORT}`,
+    },
+  };
+
+  const proxyReq = http.request(options);
+  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+    socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
+                 'Upgrade: websocket\r\n' +
+                 'Connection: Upgrade\r\n' +
+                 '\r\n');
+    proxySocket.pipe(socket);
+    socket.pipe(proxySocket);
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('[websocket error]', err.message);
+    socket.end();
+  });
+
+  proxyReq.end();
 });
 
 // 启动服务器
