@@ -312,11 +312,16 @@ const server = http.createServer(async (req, res) => {
 
     if (isSSE) {
       // SSE 需要流式传输，不能缓冲
-      res.writeHead(targetRes.status, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-        'connection': 'keep-alive',
-      });
+      // 复制原始响应头并添加SSE所需的头
+      const responseHeaders = {};
+      for (const [key, value] of targetRes.headers) {
+        responseHeaders[key] = value;
+      }
+      // 确保这些头部正确设置
+      responseHeaders['cache-control'] = 'no-cache';
+      responseHeaders['connection'] = 'keep-alive';
+
+      res.writeHead(targetRes.status, responseHeaders);
 
       // 使用 body 流式传输
       const reader = targetRes.body.getReader();
