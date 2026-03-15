@@ -207,12 +207,15 @@ async function forwardRequest(req, body) {
   delete headers.host;
 
   const url = `http://127.0.0.1:${INTERNAL_PORT}${req.url}`;
+  console.log(`[debug] forwardRequest ${req.method} ${url} body: ${body ? body.length : 0} bytes`);
+
   const response = await fetch(url, {
     method: req.method,
     headers,
     body: body ? Buffer.from(body) : undefined,
   });
 
+  console.log(`[debug] forwardRequest response status: ${response.status}`);
   return response;
 }
 
@@ -247,6 +250,7 @@ const server = http.createServer(async (req, res) => {
     let body = null;
     if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
       body = await readRequestBody(req);
+      console.log(`[debug] ${req.method} ${req.url} body length: ${body ? body.length : 0}`);
     }
 
     if (isHtmlRequest) {
