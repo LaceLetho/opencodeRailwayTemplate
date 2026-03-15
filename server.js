@@ -8,7 +8,6 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const stream = require("stream");
 const httpProxy = require("http-proxy");
 
 const PORT = process.env.PORT || "8080";
@@ -278,10 +277,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 非 HTML 请求使用代理，需要传递请求体
-    proxy.web(req, res, {
-      buffer: body ? stream.Readable.from(body) : undefined
-    });
+    // 非 HTML 请求直接转发
+    const targetRes = await forwardRequest(req, body);
+
+    // 复制响应头
+    const responseHeaders = {};
+    for (const [key, value] of targetRes.headers) {
+      responseHeaders[key] = value;
+    }
+
+    // 读取响应体
+    const responseBody = await targetRes.arrayBuffer();
+
+    // 发送响应
+    res.writeHead(targetRes.status, responseHeaders);
+    res.end(Buffer.from(responseBody));
   } catch (err) {
     console.error("[server error]", err.message);
     if (!res.headersSent) {
