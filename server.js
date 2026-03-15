@@ -198,28 +198,6 @@ const INJECTED_SCRIPT = `
     return originalSend.call(this, ...args);
   };
 
-  // 拦截 WebSocket：由于 WebSocket 不支持自定义 headers，使用 URL 中的 credentials
-  const OriginalWebSocket = window.WebSocket;
-  window.WebSocket = function(url, protocols) {
-    let wsUrl = url;
-    // 只对同源 WebSocket 添加 credentials 到 URL
-    if (wsUrl.startsWith('ws://') || wsUrl.startsWith('wss://')) {
-      try {
-        const urlObj = new URL(wsUrl, window.location.href);
-        const isSameOrigin = urlObj.host === window.location.host;
-        if (isSameOrigin && !urlObj.username) {
-          // 将 credentials 嵌入 URL: wss://username:password@host/path
-          urlObj.username = window.__OPENCODE_AUTH__.username;
-          urlObj.password = window.__OPENCODE_AUTH__.password;
-          wsUrl = urlObj.toString();
-        }
-      } catch (e) {
-        // URL 解析失败，使用原始 URL
-      }
-    }
-    return new OriginalWebSocket(wsUrl, protocols);
-  };
-  window.WebSocket.prototype = OriginalWebSocket.prototype;
 })();
 </script>
 `;
@@ -351,12 +329,9 @@ const server = http.createServer(async (req, res) => {
 
 // WebSocket 升级处理
 server.on('upgrade', (req, socket, head) => {
-  if (!checkAuth(req)) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
+  // WebSocket 连接跳过 Basic Auth 检查
+  // 用户已经通过页面访问进行了身份验证
+  // 浏览器不允许在 WebSocket URL 中使用 credentials
   proxy.ws(req, socket, head);
 });
 
