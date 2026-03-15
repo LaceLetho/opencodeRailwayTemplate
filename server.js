@@ -207,7 +207,9 @@ async function forwardRequest(req, body) {
   delete headers.host;
 
   const url = `http://127.0.0.1:${INTERNAL_PORT}${req.url}`;
-  console.log(`[debug] forwardRequest ${req.method} ${url} body: ${body ? body.length : 0} bytes`);
+  console.log(`[debug] forwardRequest ${req.method} ${url}`);
+  console.log(`[debug] headers: ${JSON.stringify(headers)}`);
+  console.log(`[debug] body: ${body ? body.length : 0} bytes, content: ${body ? body.toString().substring(0, 200) : 'null'}`);
 
   const response = await fetch(url, {
     method: req.method,
