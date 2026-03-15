@@ -217,77 +217,35 @@ const server = http.createServer((req, res) => {
   const isHtmlRequest = !req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
 
   if (isHtmlRequest && req.method === "GET") {
-    // 使用代理获取响应
-    const proxyResChunks = [];
-    const originalWrite = res.write.bind(res);
-    const originalEnd = res.end.bind(res);
-    let headersSent = false;
-    let isHtml = false;
-
-    res.write = function(chunk, encoding) {
-      if (!headersSent) {
-        // 等待头信息
-        proxyResChunks.push(Buffer.from(chunk));
-        return true;
-      }
-      if (isHtml) {
-        // 已经处理了，这里不应该被调用
-        return true;
-      }
-      return originalWrite(chunk, encoding);
-    };
-
-    res.end = function(chunk, _encoding) {
-      if (chunk) {
-        proxyResChunks.push(Buffer.from(chunk));
-      }
-
-      if (!headersSent) {
-        // 还没有发送头，保存数据等待处理
-        return;
-      }
-
-      if (isHtml && proxyResChunks.length > 0) {
-        const body = Buffer.concat(proxyResChunks).toString('utf8');
-        // 在 </head> 前注入脚本
-        const modifiedBody = body.replace('</head>', INJECTED_SCRIPT + '</head>');
-        const newBuffer = Buffer.from(modifiedBody, 'utf8');
-
-        // 更新 Content-Length
-        res.setHeader('Content-Length', newBuffer.length);
-        originalEnd(newBuffer);
-      } else {
-        const body = Buffer.concat(proxyResChunks);
-        res.setHeader('Content-Length', body.length);
-        originalEnd(body);
-      }
-    };
-
-    // 拦截代理响应
+    // 拦截代理响应，处理 HTML 内容注入
     proxy.once('proxyRes', (proxyRes, _req, res) => {
-      headersSent = true;
       const contentType = proxyRes.headers['content-type'] || '';
-      isHtml = contentType.includes('text/html');
+      const isHtml = contentType.includes('text/html');
 
-      // 复制头信息
+      // 复制头信息（除了 content-length）
       const headers = { ...proxyRes.headers };
-      delete headers['content-length']; // 我们将重新计算
-
-      res.writeHead(proxyRes.statusCode, headers);
+      delete headers['content-length'];
 
       if (!isHtml) {
         // 非 HTML，直接透传
+        res.writeHead(proxyRes.statusCode, headers);
         proxyRes.pipe(res);
-      } else {
-        // HTML，收集完整响应后再处理
-        const chunks = [];
-        proxyRes.on('data', chunk => chunks.push(chunk));
-        proxyRes.on('end', () => {
-          const body = Buffer.concat(chunks).toString('utf8');
-          const modifiedBody = body.replace('</head>', INJECTED_SCRIPT + '</head>');
-          res.end(modifiedBody);
-        });
+        return;
       }
+
+      // HTML 响应，收集并修改
+      const chunks = [];
+      proxyRes.on('data', chunk => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const modifiedBody = body.replace('</head>', INJECTED_SCRIPT + '</head>');
+        const newBuffer = Buffer.from(modifiedBody, 'utf8');
+
+        // 设置新的 Content-Length
+        headers['content-length'] = newBuffer.length;
+        res.writeHead(proxyRes.statusCode, headers);
+        res.end(newBuffer);
+      });
     });
 
     proxy.web(req, res);
