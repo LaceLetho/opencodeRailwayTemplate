@@ -306,6 +306,37 @@ const server = http.createServer(async (req, res) => {
     // 非 HTML 请求直接转发
     const targetRes = await forwardRequest(req, body);
 
+    // 检查是否是 SSE (Server-Sent Events)
+    const contentType = targetRes.headers.get('content-type') || '';
+    const isSSE = contentType.includes('text/event-stream');
+
+    if (isSSE) {
+      // SSE 需要流式传输，不能缓冲
+      res.writeHead(targetRes.status, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      });
+
+      // 使用 body 流式传输
+      const reader = targetRes.body.getReader();
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(Buffer.from(value));
+          }
+          res.end();
+        } catch (err) {
+          console.error('[SSE] Error streaming:', err.message);
+          res.end();
+        }
+      };
+      pump();
+      return;
+    }
+
     // 复制响应头
     const responseHeaders = {};
     for (const [key, value] of targetRes.headers) {
