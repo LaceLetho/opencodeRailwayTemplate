@@ -349,6 +349,60 @@ server.on('upgrade', (req, socket, head) => {
   proxyReq.end();
 });
 
+// 启动监控脚本
+function startMonitor() {
+  const enableMonitor = process.env.ENABLE_MONITOR !== "false";
+  if (!enableMonitor) {
+    console.log("[wrapper] Monitor is disabled via ENABLE_MONITOR env var");
+    return;
+  }
+
+  console.log("[wrapper] Starting monitor...");
+
+  const { spawn } = require("child_process");
+
+  const monitorDir = "/tmp/opencode-railway-monitor";
+  const monitorScript = `${monitorDir}/opencode_monitor_v3_1.sh`;
+
+  // 克隆或更新监控仓库
+  const setupMonitor = () => {
+    const fs = require("fs");
+    const { execSync } = require("child_process");
+
+    try {
+      if (fs.existsSync(`${monitorDir}/.git`)) {
+        console.log("[wrapper] Updating monitor repository...");
+        execSync("git pull --quiet", { cwd: monitorDir, stdio: "ignore" });
+      } else {
+        console.log("[wrapper] Cloning monitor repository...");
+        fs.rmSync(monitorDir, { recursive: true, force: true });
+        execSync("git clone --quiet https://github.com/LaceLetho/opencode-railway-monitor.git " + monitorDir, { stdio: "ignore" });
+      }
+    } catch (err) {
+      console.error("[wrapper] Failed to setup monitor repo:", err.message);
+    }
+
+    // 启动监控脚本
+    if (fs.existsSync(monitorScript)) {
+      console.log("[wrapper] Launching monitor script...");
+      fs.chmodSync(monitorScript, 0o755);
+
+      const monitor = spawn("bash", [monitorScript], {
+        detached: true,
+        stdio: ["ignore", fs.openSync("/tmp/opencode_monitor.log", "a"), fs.openSync("/tmp/opencode_monitor.log", "a")],
+      });
+
+      monitor.unref();
+      fs.writeFileSync("/tmp/opencode_monitor.pid", monitor.pid.toString());
+      console.log(`[wrapper] Monitor started (PID: ${monitor.pid})`);
+    } else {
+      console.error("[wrapper] Monitor script not found at:", monitorScript);
+    }
+  };
+
+  setupMonitor();
+}
+
 // 启动服务器
 async function start() {
   // 等待 OpenCode 启动
@@ -359,6 +413,9 @@ async function start() {
     process.exit(1);
   }
   console.log("[wrapper] OpenCode is ready");
+
+  // 启动监控（在OpenCode就绪后）
+  startMonitor();
 
   // 启动代理服务器
   server.listen(PORT, "0.0.0.0", () => {
