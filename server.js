@@ -387,9 +387,31 @@ function startMonitor() {
       console.log("[wrapper] Launching monitor script...");
       fs.chmodSync(monitorScript, 0o755);
 
+      const logStream = fs.createWriteStream("/tmp/opencode_monitor.log", { flags: "a" });
+
       const monitor = spawn("bash", [monitorScript], {
         detached: true,
-        stdio: ["ignore", fs.openSync("/tmp/opencode_monitor.log", "a"), fs.openSync("/tmp/opencode_monitor.log", "a")],
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      // Forward monitor logs to both Railway dashboard and file
+      monitor.stdout.on("data", (data) => {
+        const lines = data.toString().split("\n");
+        for (const line of lines) {
+          if (line) {
+            console.log("[monitor] " + line);
+            logStream.write(line + "\n");
+          }
+        }
+      });
+      monitor.stderr.on("data", (data) => {
+        const lines = data.toString().split("\n");
+        for (const line of lines) {
+          if (line) {
+            console.error("[monitor] " + line);
+            logStream.write("[stderr] " + line + "\n");
+          }
+        }
       });
 
       monitor.unref();
