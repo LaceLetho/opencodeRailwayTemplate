@@ -360,59 +360,90 @@ function startMonitor() {
   console.log("[wrapper] Starting monitor...");
 
   const { spawn } = require("child_process");
-  const path = require("path");
 
-  // Use local monitor script instead of cloning external repo
-  const monitorScript = path.join(__dirname, "monitor", "opencode_monitor_v5.sh");
+  const monitorDir = "/tmp/opencode-railway-monitor";
+  const monitorScript = `${monitorDir}/opencode_monitor_v4.sh`;
 
-  // Check if local monitor script exists
-  console.log("[wrapper] Checking for monitor script at:", monitorScript);
-  if (fs.existsSync(monitorScript)) {
-    console.log("[wrapper] Monitor script found, launching...");
-    fs.chmodSync(monitorScript, 0o755);
+  // 克隆或更新监控仓库
+  const setupMonitor = () => {
+    const fs = require("fs");
+    const { execSync } = require("child_process");
 
-    const logStream = fs.createWriteStream("/tmp/opencode_monitor.log", { flags: "a" });
-
-    const monitor = spawn("bash", [monitorScript], {
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    // Forward monitor logs to both Railway dashboard and file
-    monitor.stdout.on("data", (data) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        if (line) {
-          console.log("[monitor] " + line);
-          logStream.write(line + "\n");
+    try {
+      if (fs.existsSync(`${monitorDir}/.git`)) {
+        console.log("[wrapper] Updating monitor repository...");
+        try {
+          execSync("git pull", { cwd: monitorDir, stdio: ["ignore", "pipe", "pipe"] });
+          console.log("[wrapper] Monitor repository updated successfully");
+        } catch (pullErr) {
+          console.error("[wrapper] Git pull failed:", pullErr.message);
+        }
+      } else {
+        console.log("[wrapper] Cloning monitor repository...");
+        fs.rmSync(monitorDir, { recursive: true, force: true });
+        try {
+          execSync("git clone https://github.com/LaceLetho/opencode-railway-monitor.git " + monitorDir, { stdio: ["ignore", "pipe", "pipe"] });
+          console.log("[wrapper] Monitor repository cloned successfully");
+        } catch (cloneErr) {
+          console.error("[wrapper] Git clone failed:", cloneErr.message);
+          console.error("[wrapper] Make sure git is available and network is accessible");
         }
       }
-    });
-    monitor.stderr.on("data", (data) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        if (line) {
-          console.error("[monitor] " + line);
-          logStream.write("[stderr] " + line + "\n");
+    } catch (err) {
+      console.error("[wrapper] Failed to setup monitor repo:", err.message);
+    }
+
+    // 启动监控脚本
+    console.log("[wrapper] Checking for monitor script at:", monitorScript);
+    if (fs.existsSync(monitorScript)) {
+      console.log("[wrapper] Monitor script found, launching...");
+      fs.chmodSync(monitorScript, 0o755);
+
+      const logStream = fs.createWriteStream("/tmp/opencode_monitor.log", { flags: "a" });
+
+      const monitor = spawn("bash", [monitorScript], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      // Forward monitor logs to both Railway dashboard and file
+      monitor.stdout.on("data", (data) => {
+        const lines = data.toString().split("\n");
+        for (const line of lines) {
+          if (line) {
+            console.log("[monitor] " + line);
+            logStream.write(line + "\n");
+          }
         }
-      }
-    });
+      });
+      monitor.stderr.on("data", (data) => {
+        const lines = data.toString().split("\n");
+        for (const line of lines) {
+          if (line) {
+            console.error("[monitor] " + line);
+            logStream.write("[stderr] " + line + "\n");
+          }
+        }
+      });
 
-    monitor.on("error", (err) => {
-      console.error("[wrapper] Monitor process error:", err.message);
-    });
+      monitor.on("error", (err) => {
+        console.error("[wrapper] Monitor process error:", err.message);
+      });
 
-    monitor.on("exit", (code, signal) => {
-      console.error(`[wrapper] Monitor process exited with code=${code}, signal=${signal}`);
-    });
+      monitor.on("exit", (code, signal) => {
+        console.error(`[wrapper] Monitor process exited with code=${code}, signal=${signal}`);
+      });
 
-    monitor.unref();
-    fs.writeFileSync("/tmp/opencode_monitor.pid", monitor.pid.toString());
-    console.log(`[wrapper] Monitor started (PID: ${monitor.pid})`);
-  } else {
-    console.error("[wrapper] Monitor script not found at:", monitorScript);
-    console.error("[wrapper] Monitor directory contents:", fs.readdirSync(path.dirname(monitorScript)).join(", "));
-  }
+      monitor.unref();
+      fs.writeFileSync("/tmp/opencode_monitor.pid", monitor.pid.toString());
+      console.log(`[wrapper] Monitor started (PID: ${monitor.pid})`);
+    } else {
+      console.error("[wrapper] Monitor script not found at:", monitorScript);
+      console.error("[wrapper] Directory contents:", fs.readdirSync(monitorDir).join(", "));
+    }
+  };
+
+  setupMonitor();
 }
 
 // 启动服务器
