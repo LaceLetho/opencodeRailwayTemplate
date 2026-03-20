@@ -28,8 +28,9 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
-# Copy start script and server wrapper
-COPY start.sh server.js ./
+# Copy start script, server wrapper, and monitor script
+COPY start.sh server.js monitor.sh ./
+RUN chmod +x monitor.sh
 
 # Railway injects PORT at runtime
 EXPOSE 8080
