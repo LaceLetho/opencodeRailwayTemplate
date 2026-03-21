@@ -184,6 +184,41 @@ const INJECTED_SCRIPT = `
     return originalSend.call(this, ...args);
   };
 
+  // Intercept WebSocket: OpenCode SDK embeds Basic Auth credentials in WebSocket URLs
+  // (username/password), but browsers don't support wss://username:password@host format.
+  // This intercepts WebSocket creation and strips credentials from the URL.
+  const OriginalWebSocket = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    let cleanUrl = url;
+    
+    // Convert URL to string for consistent handling (handles both string and URL objects)
+    const urlStr = typeof url === 'string' ? url : url.toString();
+    
+    // Check for credentials in URL (presence of @ indicates potential credentials)
+    if (urlStr.includes('@')) {
+      try {
+        const urlObj = new URL(urlStr);
+        if (urlObj.username || urlObj.password) {
+          // Strip credentials by clearing username/password on the URL object
+          urlObj.username = '';
+          urlObj.password = '';
+          cleanUrl = urlObj.toString();
+        }
+      } catch (e) {
+        // URL parsing failed - likely a relative URL or invalid format.
+        // Keep original URL unchanged; browser will handle errors appropriately.
+      }
+    }
+    
+    return new OriginalWebSocket(cleanUrl, protocols);
+  };
+  // Copy static properties to maintain compatibility with code checking WebSocket state
+  window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+  window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+  window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+  window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+
 })();
 </script>
 `;
