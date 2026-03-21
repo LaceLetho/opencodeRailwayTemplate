@@ -19,9 +19,9 @@ LAST_GENERATION_FILE="$STATE_DIR/last_generation_time"
 EVENT_MONITOR_PID_FILE="$STATE_DIR/event_monitor.pid"
 
 RAILWAY_API_TOKEN="${RAILWAY_API_TOKEN:-}"
-RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-86df633b-79e2-4679-8b70-209e000fc6b6}"
-RAILWAY_ENVIRONMENT_ID="${RAILWAY_ENVIRONMENT_ID:-866a8008-85c1-420f-8b5c-eb8b628c747c}"
-RAILWAY_SERVICE_ID="${RAILWAY_SERVICE_ID:-04480a22-64b6-4c9d-9815-691aeea0a228}"
+RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-}"
+RAILWAY_ENVIRONMENT_ID="${RAILWAY_ENVIRONMENT_ID:-}"
+RAILWAY_SERVICE_ID="${RAILWAY_SERVICE_ID:-}"
 
 API_URL="http://127.0.0.1:18080"
 
@@ -73,9 +73,9 @@ get_current_deployment_id() {
 trigger_deployment_restart() {
     log "  🚀 调用Railway API重启当前部署..."
     
-    if [ -z "$RAILWAY_API_TOKEN" ]; then
-        log "  ⚠️ 未设置 RAILWAY_API_TOKEN，跳过API重启"
-        log "     请设置环境变量: RAILWAY_API_TOKEN"
+    if [ -z "$RAILWAY_API_TOKEN" ] || [ -z "$RAILWAY_PROJECT_ID" ] || [ -z "$RAILWAY_ENVIRONMENT_ID" ] || [ -z "$RAILWAY_SERVICE_ID" ]; then
+        log "  ⚠️ 未设置必要的环境变量，跳过API重启"
+        log "     请设置环境变量: RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, RAILWAY_ENVIRONMENT_ID, RAILWAY_SERVICE_ID"
         return 1
     fi
     
@@ -115,9 +115,9 @@ trigger_deployment_restart() {
 trigger_railway_redeploy() {
     log "  🚀 调用Railway API触发重新部署..."
     
-    if [ -z "$RAILWAY_API_TOKEN" ]; then
-        log "  ⚠️ 未设置 RAILWAY_API_TOKEN，跳过API部署"
-        log "     请设置环境变量: RAILWAY_API_TOKEN"
+    if [ -z "$RAILWAY_API_TOKEN" ] || [ -z "$RAILWAY_PROJECT_ID" ] || [ -z "$RAILWAY_ENVIRONMENT_ID" ] || [ -z "$RAILWAY_SERVICE_ID" ]; then
+        log "  ⚠️ 未设置必要的环境变量，跳过API部署"
+        log "     请设置环境变量: RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, RAILWAY_ENVIRONMENT_ID, RAILWAY_SERVICE_ID"
         return 1
     fi
     
