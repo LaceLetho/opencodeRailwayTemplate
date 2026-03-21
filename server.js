@@ -206,16 +206,20 @@ const OPENCODE_API_PREFIXES = [
 
 // 检查请求是否是插件端点
 function isPluginEndpoint(url) {
+  // Remove query string and hash for matching
+  const pathname = url.split('?')[0].split('#')[0];
   // 精确匹配
-  if (PLUGIN_ENDPOINTS.includes(url)) return true;
+  if (PLUGIN_ENDPOINTS.includes(pathname)) return true;
   // 前缀匹配
-  if (PLUGIN_PREFIXES.some(prefix => url.startsWith(prefix))) return true;
+  if (PLUGIN_PREFIXES.some(prefix => pathname.startsWith(prefix))) return true;
   return false;
 }
 
 // 检查请求是否是 OpenCode API 端点
 function isOpencodeApiEndpoint(url) {
-  return OPENCODE_API_PREFIXES.some(prefix => url === prefix || url.startsWith(prefix + '/'));
+  // Remove query string and hash for matching
+  const pathname = url.split('?')[0].split('#')[0];
+  return OPENCODE_API_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));
 }
 
 // 创建代理服务器
@@ -234,10 +238,12 @@ const server = http.createServer((req, res) => {
   // API 端点不应被视为 HTML 请求
   const isApiReq = isOpencodeApiEndpoint(req.url);
   const isPluginReq = isPluginEndpoint(req.url);
+  // Use pathname (without query string) for static file check
+  const urlPathname = req.url.split('?')[0].split('#')[0];
   const isHtmlRequest = req.method === "GET" &&
     !isApiReq &&
     !isPluginReq &&
-    !req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
+    !urlPathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
 
   // 检查是否是 SSE (Server-Sent Events) 请求
   const acceptHeader = req.headers.accept || '';
