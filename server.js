@@ -231,21 +231,28 @@ const server = http.createServer((req, res) => {
   }
 
   // 检查是否是可能需要注入脚本的 HTML 请求
+  // API 端点不应被视为 HTML 请求
+  const isApiReq = isOpencodeApiEndpoint(req.url);
+  const isPluginReq = isPluginEndpoint(req.url);
   const isHtmlRequest = req.method === "GET" &&
+    !isApiReq &&
+    !isPluginReq &&
     !req.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
 
   // 检查是否是 SSE (Server-Sent Events) 请求
   const acceptHeader = req.headers.accept || '';
   const isSSE = acceptHeader.includes('text/event-stream');
+  
+  // 检查是否是 WebSocket 升级请求 (在 HTTP/2 中可能以这种方式出现)
+  const isWebSocketUpgrade = req.headers.upgrade === 'websocket' || 
+                             req.headers.connection?.toLowerCase().includes('upgrade');
 
   // 确定目标端口：插件端点 -> 插件端口，其他 -> 内部 OpenCode 端口
-  const isPluginReq = isPluginEndpoint(req.url);
   const targetPort = isPluginReq ? PLUGIN_PORT : INTERNAL_PORT;
-  const isApiReq = isOpencodeApiEndpoint(req.url);
 
-  // 调试日志：记录 API 请求
-  if (isApiReq || isPluginReq) {
-    console.log(`[proxy] ${req.method} ${req.url} -> ${isPluginReq ? 'plugin' : 'opencode'} port ${targetPort}`);
+  // 调试日志：记录 API/WebSocket 请求
+  if (isApiReq || isPluginReq || isSSE || isWebSocketUpgrade) {
+    console.log(`[proxy] ${req.method} ${req.url} -> ${isPluginReq ? 'plugin' : 'opencode'} port ${targetPort} (API:${isApiReq}, SSE:${isSSE}, WS:${isWebSocketUpgrade})`);
   }
 
   // 准备转发 headers
@@ -262,7 +269,8 @@ const server = http.createServer((req, res) => {
   };
 
   // 对于 HTML 请求，需要获取完整响应并注入脚本
-  if (isHtmlRequest && !isSSE) {
+  // API、SSE 和 WebSocket 请求不应进行 HTML 注入
+  if (isHtmlRequest && !isSSE && !isWebSocketUpgrade) {
     const proxyReq = http.request(options, (proxyRes) => {
       const contentType = proxyRes.headers['content-type'] || '';
 
@@ -320,6 +328,8 @@ const server = http.createServer((req, res) => {
 
 // WebSocket 升级处理
 server.on('upgrade', (req, socket, head) => {
+  console.log(`[websocket] Upgrade request for ${req.url}`);
+  
   // WebSocket 连接跳过 Basic Auth 检查
   // 浏览器不允许在 WebSocket URL 中使用 credentials
   const options = {
@@ -334,6 +344,7 @@ server.on('upgrade', (req, socket, head) => {
 
   const proxyReq = http.request(options);
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+    console.log(`[websocket] Upgraded successfully for ${req.url}`);
     socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
                  'Upgrade: websocket\r\n' +
                  'Connection: Upgrade\r\n' +
@@ -344,6 +355,12 @@ server.on('upgrade', (req, socket, head) => {
 
   proxyReq.on('error', (err) => {
     console.error('[websocket error]', err.message);
+    socket.end();
+  });
+  
+  proxyReq.on('response', (res) => {
+    // If we get a response instead of an upgrade, the backend doesn't support WebSocket
+    console.error(`[websocket] Backend returned ${res.statusCode} instead of upgrade for ${req.url}`);
     socket.end();
   });
 
