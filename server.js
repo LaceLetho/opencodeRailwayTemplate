@@ -314,6 +314,8 @@ const server = http.createServer((req, res) => {
   } else {
     // 非 HTML 请求或 SSE 请求，直接流式转发
     const proxyReq = http.request(options, (proxyRes) => {
+      const contentType = proxyRes.headers['content-type'] || 'unknown';
+      console.log(`[proxy] Response from backend: ${req.method} ${req.url} -> ${proxyRes.statusCode} ${contentType}`);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
