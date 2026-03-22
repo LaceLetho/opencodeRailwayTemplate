@@ -264,10 +264,18 @@ const server = http.createServer((req, res) => {
   delete forwardHeaders.host;
   delete forwardHeaders.authorization; // 内部服务器不需要 auth
 
+  // Rewrite /events to /global/event for backwards compatibility
+  // OpenCode changed the endpoint from /events to /global/event
+  let proxyPath = req.url;
+  if (proxyPath === '/events' || proxyPath.startsWith('/events?')) {
+    proxyPath = proxyPath.replace('/events', '/global/event');
+    console.log(`[proxy] Rewriting ${req.url} to ${proxyPath}`);
+  }
+
   const options = {
     hostname: "127.0.0.1",
     port: targetPort,
-    path: req.url,
+    path: proxyPath,
     method: req.method,
     headers: forwardHeaders,
   };
