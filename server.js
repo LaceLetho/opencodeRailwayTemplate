@@ -59,7 +59,6 @@ function ensurePluginConfig() {
     // Remove stale "plugins" key written by a previous deployment (caused ConfigInvalidError)
     if (config.plugins !== undefined) {
       delete config.plugins;
-      console.log("[wrapper] Removed invalid 'plugins' key from opencode.json");
     }
 
     // Ensure "plugin" array exists and contains the OpenClaw plugin
@@ -70,11 +69,9 @@ function ensurePluginConfig() {
     const pluginName = "@laceletho/plugin-openclaw";
     if (!config.plugin.includes(pluginName)) {
       config.plugin.push(pluginName);
-      console.log(`[wrapper] Added ${pluginName} to opencode.json plugin list`);
     }
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log("[wrapper] OpenClaw plugin configuration updated");
 
   } catch (err) {
     console.error("[wrapper] Failed to update plugin config:", err.message);
@@ -299,8 +296,10 @@ const server = http.createServer((req, res) => {
   // 确定目标端口：插件端点 -> 插件端口，其他 -> 内部 OpenCode 端口
   const targetPort = isPluginReq ? PLUGIN_PORT : INTERNAL_PORT;
 
-  // 调试日志：记录所有请求以便调试
-  console.log(`[proxy] ${req.method} ${req.url} -> ${isPluginReq ? 'plugin' : 'opencode'} port ${targetPort} (API:${isApiReq}, SSE:${isSSE}, WS:${isWebSocketUpgrade}, HTML:${isHtmlRequest})`);
+  // 只在出错时记录请求信息
+  if (process.env.DEBUG_PROXY) {
+    console.log(`[proxy] ${req.method} ${req.url}`);
+  }
 
   // 准备转发 headers
   const forwardHeaders = { ...req.headers };
@@ -312,7 +311,6 @@ const server = http.createServer((req, res) => {
   let proxyPath = req.url;
   if (proxyPath === '/events' || proxyPath.startsWith('/events?')) {
     proxyPath = proxyPath.replace('/events', '/global/event');
-    console.log(`[proxy] Rewriting ${req.url} to ${proxyPath}`);
   }
 
   const options = {
@@ -365,8 +363,6 @@ const server = http.createServer((req, res) => {
   } else {
     // 非 HTML 请求或 SSE 请求，直接流式转发
     const proxyReq = http.request(options, (proxyRes) => {
-      const contentType = proxyRes.headers['content-type'] || 'unknown';
-      console.log(`[proxy] Response from backend: ${req.method} ${req.url} -> ${proxyRes.statusCode} ${contentType}`);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
@@ -385,8 +381,6 @@ const server = http.createServer((req, res) => {
 
 // WebSocket 升级处理
 server.on('upgrade', (req, socket, head) => {
-  console.log(`[websocket] Upgrade request for ${req.url}`);
-  
   // WebSocket 连接跳过 Basic Auth 检查
   // 浏览器不允许在 WebSocket URL 中使用 credentials
   const options = {
@@ -401,7 +395,6 @@ server.on('upgrade', (req, socket, head) => {
 
   const proxyReq = http.request(options);
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-    console.log(`[websocket] Upgraded successfully for ${req.url}`);
     socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
                  'Upgrade: websocket\r\n' +
                  'Connection: Upgrade\r\n' +
@@ -417,7 +410,6 @@ server.on('upgrade', (req, socket, head) => {
   
   proxyReq.on('response', (res) => {
     // If we get a response instead of an upgrade, the backend doesn't support WebSocket
-    console.error(`[websocket] Backend returned ${res.statusCode} instead of upgrade for ${req.url}`);
     socket.end();
   });
 
@@ -428,22 +420,15 @@ server.on('upgrade', (req, socket, head) => {
 function startMonitor() {
   const enableMonitor = process.env.ENABLE_MONITOR !== "false";
   if (!enableMonitor) {
-    console.log("[wrapper] Monitor is disabled via ENABLE_MONITOR env var");
     return;
   }
-
-  console.log("[wrapper] Starting monitor...");
 
   const { spawn } = require("child_process");
   const fs = require("fs");
 
-  // 本地监控脚本路径（已打包在镜像中）
   const monitorScript = "/app/monitor.sh";
 
-  // 启动监控脚本
-  console.log("[wrapper] Checking for monitor script at:", monitorScript);
   if (fs.existsSync(monitorScript)) {
-    console.log("[wrapper] Monitor script found, launching...");
     fs.chmodSync(monitorScript, 0o755);
 
     const logStream = fs.createWriteStream("/tmp/opencode_monitor.log", { flags: "a" });
@@ -453,15 +438,9 @@ function startMonitor() {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    // Forward monitor logs to both Railway dashboard and file
+    // 只记录错误级别日志到控制台，全部日志写入文件
     monitor.stdout.on("data", (data) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        if (line) {
-          console.log("[monitor] " + line);
-          logStream.write(line + "\n");
-        }
-      }
+      logStream.write(data.toString());
     });
     monitor.stderr.on("data", (data) => {
       const lines = data.toString().split("\n");
@@ -474,18 +453,12 @@ function startMonitor() {
     });
 
     monitor.on("error", (err) => {
-      console.error("[wrapper] Monitor process error:", err.message);
-    });
-
-    monitor.on("exit", (code, signal) => {
-      console.error(`[wrapper] Monitor process exited with code=${code}, signal=${signal}`);
+      console.error("[wrapper] Monitor error:", err.message);
     });
 
     monitor.unref();
     fs.writeFileSync("/tmp/opencode_monitor.pid", monitor.pid.toString());
-    console.log(`[wrapper] Monitor started (PID: ${monitor.pid})`);
-  } else {
-    console.error("[wrapper] Monitor script not found at:", monitorScript);
+    console.log("[wrapper] Monitor started");
   }
 }
 
