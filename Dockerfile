@@ -22,6 +22,9 @@ RUN bun --version
 # Install OpenCode CLI
 RUN bun install -g opencode-ai
 
+# Install OpenClaw plugin for OpenCode
+RUN bun install -g @laceletho/plugin-openclaw
+
 WORKDIR /app
 
 # Copy package files and install dependencies

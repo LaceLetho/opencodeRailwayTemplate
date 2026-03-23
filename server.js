@@ -40,6 +40,44 @@ process.env.OPENCODE_CONFIG = "/data/.config/opencode/config.json";
 process.env.OPENCODE_SERVER_PASSWORD = "";
 delete process.env.OPENCODE_SERVER_PASSWORD;
 
+// Set OpenClaw plugin environment variables
+process.env.OPENCLAW_PORT = PLUGIN_PORT;
+
+// Ensure opencode.json config file includes the OpenClaw plugin
+function ensurePluginConfig() {
+  const configPath = "/data/.config/opencode/opencode.json";
+  
+  try {
+    let config = {};
+    
+    // Read existing config
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, "utf8");
+      config = JSON.parse(content);
+    }
+    
+    // Ensure plugins array exists and contains OpenClaw plugin
+    if (!config.plugins) {
+      config.plugins = [];
+    }
+    
+    const pluginName = "@laceletho/plugin-openclaw";
+    if (!config.plugins.includes(pluginName)) {
+      config.plugins.push(pluginName);
+      console.log(`[wrapper] Added ${pluginName} to opencode.json plugins`);
+    }
+    
+    // Write back config file
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log("[wrapper] OpenClaw plugin configuration updated");
+    
+  } catch (err) {
+    console.error("[wrapper] Failed to update plugin config:", err.message);
+  }
+}
+
+ensurePluginConfig();
+
 console.log(`Starting OpenCode Web on port ${PORT}...`);
 console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
