@@ -40,26 +40,23 @@ process.env.OPENCODE_CONFIG = "/data/.config/opencode/config.json";
 process.env.OPENCODE_SERVER_PASSWORD = "";
 delete process.env.OPENCODE_SERVER_PASSWORD;
 
-// 设置 OpenClaw 插件环境变量
+// Set OpenClaw plugin environment variables
 process.env.OPENCLAW_PORT = PLUGIN_PORT;
-if (process.env.OPENCLAW_API_KEY) {
-  // API key already set from Railway env
-}
 
-// 确保 opencode.json 配置文件中包含 OpenClaw 插件
+// Ensure opencode.json config file includes the OpenClaw plugin
 function ensurePluginConfig() {
   const configPath = "/data/.config/opencode/opencode.json";
   
   try {
     let config = {};
     
-    // 读取现有配置
+    // Read existing config
     if (fs.existsSync(configPath)) {
       const content = fs.readFileSync(configPath, "utf8");
       config = JSON.parse(content);
     }
     
-    // 确保 plugins 数组存在并包含 OpenClaw 插件
+    // Ensure plugins array exists and contains OpenClaw plugin
     if (!config.plugins) {
       config.plugins = [];
     }
@@ -70,7 +67,7 @@ function ensurePluginConfig() {
       console.log(`[wrapper] Added ${pluginName} to opencode.json plugins`);
     }
     
-    // 写回配置文件
+    // Write back config file
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log("[wrapper] OpenClaw plugin configuration updated");
     
