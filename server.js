@@ -40,6 +40,47 @@ process.env.OPENCODE_CONFIG = "/data/.config/opencode/config.json";
 process.env.OPENCODE_SERVER_PASSWORD = "";
 delete process.env.OPENCODE_SERVER_PASSWORD;
 
+// 设置 OpenClaw 插件环境变量
+process.env.OPENCLAW_PORT = PLUGIN_PORT;
+if (process.env.OPENCLAW_API_KEY) {
+  // API key already set from Railway env
+}
+
+// 确保 opencode.json 配置文件中包含 OpenClaw 插件
+function ensurePluginConfig() {
+  const configPath = "/data/.config/opencode/opencode.json";
+  
+  try {
+    let config = {};
+    
+    // 读取现有配置
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, "utf8");
+      config = JSON.parse(content);
+    }
+    
+    // 确保 plugins 数组存在并包含 OpenClaw 插件
+    if (!config.plugins) {
+      config.plugins = [];
+    }
+    
+    const pluginName = "@laceletho/plugin-openclaw";
+    if (!config.plugins.includes(pluginName)) {
+      config.plugins.push(pluginName);
+      console.log(`[wrapper] Added ${pluginName} to opencode.json plugins`);
+    }
+    
+    // 写回配置文件
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log("[wrapper] OpenClaw plugin configuration updated");
+    
+  } catch (err) {
+    console.error("[wrapper] Failed to update plugin config:", err.message);
+  }
+}
+
+ensurePluginConfig();
+
 console.log(`Starting OpenCode Web on port ${PORT}...`);
 console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
