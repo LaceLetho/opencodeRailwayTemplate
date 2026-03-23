@@ -296,7 +296,7 @@ const server = http.createServer((req, res) => {
   // 确定目标端口：插件端点 -> 插件端口，其他 -> 内部 OpenCode 端口
   const targetPort = isPluginReq ? PLUGIN_PORT : INTERNAL_PORT;
 
-  // 只在出错时记录请求信息
+  // 只在DEBUG_PROXY启用时记录请求信息
   if (process.env.DEBUG_PROXY) {
     console.log(`[proxy] ${req.method} ${req.url}`);
   }
