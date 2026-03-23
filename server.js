@@ -43,34 +43,39 @@ delete process.env.OPENCODE_SERVER_PASSWORD;
 // Set OpenClaw plugin environment variables
 process.env.OPENCLAW_PORT = PLUGIN_PORT;
 
-// Ensure opencode.json config file includes the OpenClaw plugin
+// Ensure opencode.json config file includes the OpenClaw plugin.
+// Note: the correct config key is "plugin" (singular), not "plugins".
 function ensurePluginConfig() {
   const configPath = "/data/.config/opencode/opencode.json";
-  
+
   try {
     let config = {};
-    
-    // Read existing config
+
     if (fs.existsSync(configPath)) {
       const content = fs.readFileSync(configPath, "utf8");
       config = JSON.parse(content);
     }
-    
-    // Ensure plugins array exists and contains OpenClaw plugin
-    if (!config.plugins) {
-      config.plugins = [];
+
+    // Remove stale "plugins" key written by a previous deployment (caused ConfigInvalidError)
+    if (config.plugins !== undefined) {
+      delete config.plugins;
+      console.log("[wrapper] Removed invalid 'plugins' key from opencode.json");
     }
-    
+
+    // Ensure "plugin" array exists and contains the OpenClaw plugin
+    if (!config.plugin) {
+      config.plugin = [];
+    }
+
     const pluginName = "@laceletho/plugin-openclaw";
-    if (!config.plugins.includes(pluginName)) {
-      config.plugins.push(pluginName);
-      console.log(`[wrapper] Added ${pluginName} to opencode.json plugins`);
+    if (!config.plugin.includes(pluginName)) {
+      config.plugin.push(pluginName);
+      console.log(`[wrapper] Added ${pluginName} to opencode.json plugin list`);
     }
-    
-    // Write back config file
+
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log("[wrapper] OpenClaw plugin configuration updated");
-    
+
   } catch (err) {
     console.error("[wrapper] Failed to update plugin config:", err.message);
   }
