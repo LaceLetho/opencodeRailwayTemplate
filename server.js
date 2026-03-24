@@ -7,6 +7,7 @@
 const http = require("http");
 const { spawn } = require("child_process");
 const fs = require("fs");
+const { proxyWebSocketUpgrade } = require("./ws-proxy");
 
 const PORT = process.env.PORT || "8080";
 const INTERNAL_PORT = process.env.INTERNAL_PORT || "18080";
@@ -417,37 +418,15 @@ const server = http.createServer((req, res) => {
 server.on('upgrade', (req, socket, head) => {
   // WebSocket 连接跳过 Basic Auth 检查
   // 浏览器不允许在 WebSocket URL 中使用 credentials
-  const options = {
-    hostname: "127.0.0.1",
-    port: INTERNAL_PORT,
-    path: req.url,
-    headers: {
-      ...req.headers,
-      host: `127.0.0.1:${INTERNAL_PORT}`,
+  proxyWebSocketUpgrade({
+    req,
+    socket,
+    head,
+    targetPort: INTERNAL_PORT,
+    onError: (err) => {
+      console.error('[websocket error]', err.message);
     },
-  };
-
-  const proxyReq = http.request(options);
-  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-    socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
-                 'Upgrade: websocket\r\n' +
-                 'Connection: Upgrade\r\n' +
-                 '\r\n');
-    proxySocket.pipe(socket);
-    socket.pipe(proxySocket);
   });
-
-  proxyReq.on('error', (err) => {
-    console.error('[websocket error]', err.message);
-    socket.end();
-  });
-  
-  proxyReq.on('response', (res) => {
-    // If we get a response instead of an upgrade, the backend doesn't support WebSocket
-    socket.end();
-  });
-
-  proxyReq.end();
 });
 
 // 启动监控脚本

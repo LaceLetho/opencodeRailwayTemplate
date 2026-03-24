@@ -2,7 +2,8 @@
   "name": "opencode-railway-template",
   "private": true,
   "scripts": {
-    "start": "bash start.sh"
+    "start": "bash start.sh",
+    "test": "node test/ws-proxy.test.js"
   },
   "dependencies": {}
 }

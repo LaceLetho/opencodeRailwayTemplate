@@ -28,8 +28,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
-# Copy start script, server wrapper, and monitor script
-COPY start.sh server.js monitor.sh ./
+# Copy start script, server wrapper, websocket proxy helper, and monitor script
+COPY start.sh server.js ws-proxy.js monitor.sh ./
 RUN chmod +x monitor.sh
 
 # Railway injects PORT at runtime
