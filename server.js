@@ -15,6 +15,7 @@ const PASSWORD = process.env.OPENCODE_SERVER_PASSWORD;
 const USERNAME = process.env.OPENCODE_SERVER_USERNAME || "opencode";
 const AUTH_REALM = process.env.AUTH_REALM || "opencode.tradao.xyz";
 const logLevel = process.env.LOG_LEVEL?.toUpperCase() || "WARN";
+const debugTraffic = process.env.DEBUG_OPENCODE_TRAFFIC === "true";
 
 if (!PASSWORD) {
   console.error("ERROR: OPENCODE_SERVER_PASSWORD is required");
@@ -85,11 +86,14 @@ console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
 console.log(`Workspace: /data/workspace`);
 console.log(`Log level: ${logLevel} (set LOG_LEVEL env var to change: DEBUG, INFO, WARN, ERROR)`);
+if (debugTraffic) {
+  console.log("OpenCode traffic debug logging enabled");
+}
 
-// 启动 opencode web（内部端口，不直接暴露）
+// 启动无头 opencode server（内部端口，不直接暴露）
 const opencode = spawn(
   "bunx",
-  ["opencode", "web", "--port", INTERNAL_PORT, "--hostname", "127.0.0.1", "--print-logs", "--log-level", logLevel],
+  ["opencode", "--print-logs", "--log-level", logLevel, "serve", "--port", INTERNAL_PORT, "--hostname", "127.0.0.1"],
   {
     cwd: "/data/workspace/tradao",
     stdio: ["ignore", "pipe", "pipe"],
@@ -99,10 +103,39 @@ const opencode = spawn(
 
 let receivedSigterm = false;
 
+function shouldSuppressLog(trimmed) {
+  if (debugTraffic) return false;
+  if (trimmed.includes('Executable not found in $PATH: "xdg-open"')) return true;
+  if (
+    trimmed.startsWith("INFO") &&
+    trimmed.includes("service=server") &&
+    (
+      trimmed.includes("path=/global/health") ||
+      trimmed.includes("path=/pty/")
+    )
+  ) return true;
+  if (
+    trimmed.startsWith("INFO") &&
+    trimmed.includes("service=pty") &&
+    (
+      trimmed.includes("client connected to session") ||
+      trimmed.includes("client disconnected from session")
+    )
+  ) return true;
+  if (
+    trimmed.startsWith("ERROR") &&
+    trimmed.includes("service=mcp") &&
+    trimmed.includes("failed to get prompts") &&
+    trimmed.includes("Method not found")
+  ) return true;
+  return false;
+}
+
 // 日志分类：ERROR/WARN -> stderr，其他 -> stdout
 function classifyAndOutput(line) {
   const trimmed = line.toString().trim();
   if (!trimmed) return;
+  if (shouldSuppressLog(trimmed)) return;
 
   if (trimmed.startsWith("ERROR") || trimmed.startsWith("WARN")) {
     console.error(trimmed);
