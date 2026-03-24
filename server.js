@@ -7,6 +7,7 @@
 const http = require("http");
 const { spawn } = require("child_process");
 const fs = require("fs");
+const crypto = require("crypto");
 const { proxyWebSocketUpgrade } = require("./ws-proxy");
 
 const PORT = process.env.PORT || "8080";
@@ -15,6 +16,9 @@ const PLUGIN_PORT = process.env.OPENCLAW_PLUGIN_PORT || "9090";
 const PASSWORD = process.env.OPENCODE_SERVER_PASSWORD;
 const USERNAME = process.env.OPENCODE_SERVER_USERNAME || "opencode";
 const AUTH_REALM = process.env.AUTH_REALM || "opencode.tradao.xyz";
+const SESSION_SECRET = process.env.OPENCODE_SESSION_SECRET || PASSWORD;
+const SESSION_COOKIE = "opencode_session";
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const logLevel = process.env.LOG_LEVEL?.toUpperCase() || "WARN";
 const debugTraffic = process.env.DEBUG_OPENCODE_TRAFFIC === "true";
 
@@ -191,82 +195,267 @@ async function waitForOpencode(timeoutMs = 30000) {
   return false;
 }
 
-// Basic Auth 验证
-function checkAuth(req) {
+function parseBasicAuth(req) {
   const auth = req.headers.authorization;
-  if (!auth) return false;
+  if (!auth) return;
 
   const [scheme, encoded] = auth.split(" ");
-  if (scheme !== "Basic" || !encoded) return false;
+  if (scheme !== "Basic" || !encoded) return;
 
   const decoded = Buffer.from(encoded, "base64").toString("utf8");
   const [user, pass] = decoded.split(":");
-  return user === USERNAME && pass === PASSWORD;
+  if (!user || pass === undefined) return;
+  return { user, pass };
 }
 
-// 注入到 HTML 的脚本：配置前端自动发送 Basic Auth
-const INJECTED_SCRIPT = `
-<script>
-(function() {
-  // 配置前端 SDK 使用 Basic Auth
-  window.__OPENCODE_AUTH__ = {
-    username: "${USERNAME}",
-    password: "${PASSWORD}"
-  };
+function timingSafeEqual(a, b) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
 
-  // 拦截 fetch 请求，自动添加 Basic Auth 头
-  const originalFetch = window.fetch;
-  window.fetch = function(...args) {
-    const [url, options = {}] = args;
-    const urlStr = typeof url === 'string' ? url : url.url || url.toString();
+function checkBasicAuth(req) {
+  const auth = parseBasicAuth(req);
+  if (!auth) return false;
+  return timingSafeEqual(auth.user, USERNAME) && timingSafeEqual(auth.pass, PASSWORD);
+}
 
-    // 只对同源请求添加 Basic Auth
-    if (urlStr.startsWith('/') || urlStr.startsWith(window.location.origin)) {
-      options.headers = options.headers || {};
-      if (!options.headers['Authorization']) {
-        const auth = btoa(window.__OPENCODE_AUTH__.username + ':' + window.__OPENCODE_AUTH__.password);
-        options.headers['Authorization'] = 'Basic ' + auth;
+function parseCookies(req) {
+  const raw = req.headers.cookie;
+  if (!raw) return {};
+  const cookies = {};
+  for (const part of raw.split(";")) {
+    const index = part.indexOf("=");
+    if (index === -1) continue;
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    cookies[key] = value;
+  }
+  return cookies;
+}
+
+function base64url(input) {
+  return Buffer.from(input).toString("base64url");
+}
+
+function signSession(payload) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+}
+
+function createSessionToken() {
+  const payload = JSON.stringify({
+    u: USERNAME,
+    exp: Date.now() + SESSION_TTL_SECONDS * 1000,
+  });
+  const encoded = base64url(payload);
+  return `${encoded}.${signSession(encoded)}`;
+}
+
+function verifySessionToken(token) {
+  if (!token) return false;
+  const [encoded, signature] = token.split(".");
+  if (!encoded || !signature) return false;
+  const expected = signSession(encoded);
+  if (!timingSafeEqual(signature, expected)) return false;
+
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (payload.u !== USERNAME) return false;
+    if (typeof payload.exp !== "number" || payload.exp < Date.now()) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasValidSession(req) {
+  return verifySessionToken(parseCookies(req)[SESSION_COOKIE]);
+}
+
+function isAuthenticated(req) {
+  return checkBasicAuth(req) || hasValidSession(req);
+}
+
+function sessionCookieValue(token, maxAge) {
+  const attrs = [
+    `${SESSION_COOKIE}=${token}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+  ];
+  return attrs.join("; ");
+}
+
+function setSessionCookie(res) {
+  res.setHeader("Set-Cookie", sessionCookieValue(createSessionToken(), SESSION_TTL_SECONDS));
+}
+
+function clearSessionCookie(res) {
+  res.setHeader("Set-Cookie", sessionCookieValue("", 0));
+}
+
+function sendUnauthorized(res) {
+  res.writeHead(401, {
+    "WWW-Authenticate": `Basic realm="${AUTH_REALM}"`,
+    "Content-Type": "text/plain",
+    "Cache-Control": "no-store",
+  });
+  res.end("Authentication required\n");
+}
+
+function redirect(res, location, statusCode = 302) {
+  res.writeHead(statusCode, {
+    Location: location,
+    "Cache-Control": "no-store",
+  });
+  res.end();
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderLoginPage(message = "") {
+  const detail = message
+    ? `<p class="msg">${escapeHtml(message)}</p>`
+    : `<p class="hint">Use the same password you already configured for OpenCode.</p>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#f6f3ee" />
+    <title>OpenCode Login</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(160deg, #f6f3ee 0%, #e7dfd3 100%);
+        color: #1f1a17;
+        display: grid;
+        place-items: center;
+        padding: 24px;
       }
-    }
+      .card {
+        width: min(100%, 420px);
+        background: rgba(255, 252, 247, 0.94);
+        border: 1px solid rgba(71, 57, 46, 0.12);
+        border-radius: 20px;
+        box-shadow: 0 24px 80px rgba(60, 43, 30, 0.14);
+        padding: 28px;
+      }
+      h1 { margin: 0 0 8px; font-size: 28px; }
+      p { margin: 0 0 18px; line-height: 1.5; }
+      .msg { color: #9f2f2f; }
+      .hint { color: #5a4b3f; }
+      label { display: block; margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+      input {
+        width: 100%;
+        margin: 0 0 14px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid #cbbcab;
+        background: #fffdf9;
+        font-size: 16px;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: #1f1a17;
+        color: #fffaf3;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>OpenCode</h1>
+      <p>Browser sessions use a secure cookie. CLI and automation can keep using HTTP Basic Auth.</p>
+      ${detail}
+      <form method="post" action="/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" value="${escapeHtml(USERNAME)}" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Sign In</button>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
 
-    return originalFetch.call(this, url, options);
+function collectRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1024 * 1024) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
+function parseForm(body) {
+  const params = new URLSearchParams(body);
+  return {
+    username: params.get("username") || "",
+    password: params.get("password") || "",
   };
+}
 
-  // 拦截 XMLHttpRequest
-  const originalOpen = XMLHttpRequest.prototype.open;
-  const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+function pathnameOf(url) {
+  return url.split("?")[0].split("#")[0];
+}
 
-  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-    this._ocUrl = url;
-    return originalOpen.call(this, method, url, ...rest);
-  };
+function isStaticAsset(pathname) {
+  return /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/.test(pathname);
+}
 
-  XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
-    if (header.toLowerCase() === 'authorization') {
-      this._ocHasAuth = true;
-    }
-    return originalSetRequestHeader.call(this, header, value);
-  };
-
-  const originalSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function(...args) {
-    const url = this._ocUrl || '';
-    // 只对同源请求添加 Basic Auth
-    if (!this._ocHasAuth && (url.startsWith('/') || url.startsWith(window.location.origin))) {
-      const auth = btoa(window.__OPENCODE_AUTH__.username + ':' + window.__OPENCODE_AUTH__.password);
-      originalSetRequestHeader.call(this, 'Authorization', 'Basic ' + auth);
-    }
-    return originalSend.call(this, ...args);
-  };
-
-})();
-</script>
-`;
+function isHtmlNavigation(req, pathname, isApiReq, isPluginReq) {
+  if (req.method !== "GET") return false;
+  if (isApiReq || isPluginReq) return false;
+  if (isStaticAsset(pathname)) return false;
+  const accept = req.headers.accept || "";
+  return accept.includes("text/html") || accept.includes("*/*") || accept === "";
+}
 
 // 插件端点列表 - 这些端点会路由到插件端口
 // 注意：只匹配精确的插件端点，避免与 OpenCode 的 /global/health 等端点冲突
 const PLUGIN_ENDPOINTS = ['/register'];
 const PLUGIN_PREFIXES = ['/register/'];
+const PUBLIC_PATHS = new Set([
+  "/favicon.ico",
+  "/favicon-v3.ico",
+  "/favicon-v3.svg",
+  "/favicon-96x96-v3.png",
+  "/apple-touch-icon-v3.png",
+  "/site.webmanifest",
+  "/web-app-manifest-192x192.png",
+  "/web-app-manifest-512x512.png",
+]);
 
 // OpenCode HTTP API 端点前缀 - 这些端点路由到 OpenCode 服务
 const OPENCODE_API_PREFIXES = [
@@ -281,8 +470,7 @@ const OPENCODE_API_PREFIXES = [
 
 // 检查请求是否是插件端点
 function isPluginEndpoint(url) {
-  // Remove query string and hash for matching
-  const pathname = url.split('?')[0].split('#')[0];
+  const pathname = pathnameOf(url);
   // 精确匹配
   if (PLUGIN_ENDPOINTS.includes(pathname)) return true;
   // 前缀匹配
@@ -292,57 +480,90 @@ function isPluginEndpoint(url) {
 
 // 检查请求是否是 OpenCode API 端点
 function isOpencodeApiEndpoint(url) {
-  // Remove query string and hash for matching
-  const pathname = url.split('?')[0].split('#')[0];
+  const pathname = pathnameOf(url);
   return OPENCODE_API_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));
 }
 
-// 创建代理服务器
-const server = http.createServer((req, res) => {
-  // 检查 Basic Auth
-  if (!checkAuth(req)) {
-    res.writeHead(401, {
-      "WWW-Authenticate": `Basic realm="${AUTH_REALM}"`,
-      "Content-Type": "text/plain"
+function isPublicPath(pathname) {
+  return PUBLIC_PATHS.has(pathname);
+}
+
+function normalizeCspValue(value) {
+  if (!value) return "";
+  return Array.isArray(value) ? value.join("; ") : value;
+}
+
+function appendCspSource(policy, directive, source) {
+  const trimmed = policy.trim();
+  if (!trimmed) return `${directive} ${source}`;
+
+  const parts = trimmed
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const index = parts.findIndex((part) => part === directive || part.startsWith(`${directive} `));
+  if (index === -1) {
+    parts.push(`${directive} ${source}`);
+    return parts.join("; ");
+  }
+
+  const tokens = parts[index].split(/\s+/);
+  if (!tokens.includes(source)) {
+    tokens.push(source);
+    parts[index] = tokens.join(" ");
+  }
+  return parts.join("; ");
+}
+
+function applyCspRelaxation(headers) {
+  const next = { ...headers };
+  let policy = normalizeCspValue(next["content-security-policy"]);
+  if (!policy) return next;
+
+  policy = appendCspSource(policy, "script-src", "https://static.cloudflareinsights.com");
+  policy = appendCspSource(policy, "connect-src", "https://opencode.ai");
+  next["content-security-policy"] = policy;
+  return next;
+}
+
+function handleLoginPage(res, message) {
+  const body = renderLoginPage(message);
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; script-src https://static.cloudflareinsights.com; style-src 'unsafe-inline'; form-action 'self'; img-src 'self' data: https:; base-uri 'none'",
+  });
+  res.end(body);
+}
+
+async function handleLogin(req, res) {
+  try {
+    const body = await collectRequestBody(req);
+    const form = parseForm(body);
+    if (!timingSafeEqual(form.username, USERNAME) || !timingSafeEqual(form.password, PASSWORD)) {
+      handleLoginPage(res, "Invalid username or password.");
+      return;
+    }
+
+    setSessionCookie(res);
+    redirect(res, "/");
+  } catch (err) {
+    console.error("[auth error]", err.message);
+    res.writeHead(400, {
+      "Content-Type": "text/plain",
+      "Cache-Control": "no-store",
     });
-    res.end("Authentication required\n");
-    return;
+    res.end("Bad request\n");
   }
+}
 
-  // 检查是否是可能需要注入脚本的 HTML 请求
-  // API 端点不应被视为 HTML 请求
-  const isApiReq = isOpencodeApiEndpoint(req.url);
-  const isPluginReq = isPluginEndpoint(req.url);
-  // Use pathname (without query string) for static file check
-  const urlPathname = req.url.split('?')[0].split('#')[0];
-  const isHtmlRequest = req.method === "GET" &&
-    !isApiReq &&
-    !isPluginReq &&
-    !urlPathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/);
-
-  // 检查是否是 SSE (Server-Sent Events) 请求
-  const acceptHeader = req.headers.accept || '';
-  const isSSE = acceptHeader.includes('text/event-stream');
-  
-  // 检查是否是 WebSocket 升级请求 (在 HTTP/2 中可能以这种方式出现)
-  const isWebSocketUpgrade = req.headers.upgrade === 'websocket' || 
-                             req.headers.connection?.toLowerCase().includes('upgrade');
-
-  // 确定目标端口：插件端点 -> 插件端口，其他 -> 内部 OpenCode 端口
-  const targetPort = isPluginReq ? PLUGIN_PORT : INTERNAL_PORT;
-
-  // 只在DEBUG_PROXY启用时记录请求信息
-  if (process.env.DEBUG_PROXY) {
-    console.log(`[proxy] ${req.method} ${req.url}`);
-  }
-
-  // 准备转发 headers
+function proxyRequest(req, res, targetPort) {
   const forwardHeaders = { ...req.headers };
   delete forwardHeaders.host;
-  delete forwardHeaders.authorization; // 内部服务器不需要 auth
+  delete forwardHeaders.authorization;
+  delete forwardHeaders.cookie;
 
-  // Rewrite /events to /global/event for backwards compatibility
-  // OpenCode changed the endpoint from /events to /global/event
   let proxyPath = req.url;
   if (proxyPath === '/events' || proxyPath.startsWith('/events?')) {
     proxyPath = proxyPath.replace('/events', '/global/event');
@@ -356,68 +577,75 @@ const server = http.createServer((req, res) => {
     headers: forwardHeaders,
   };
 
-  // 对于 HTML 请求，需要获取完整响应并注入脚本
-  // API、SSE 和 WebSocket 请求不应进行 HTML 注入
-  if (isHtmlRequest && !isSSE && !isWebSocketUpgrade) {
-    const proxyReq = http.request(options, (proxyRes) => {
-      const contentType = proxyRes.headers['content-type'] || '';
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, applyCspRelaxation(proxyRes.headers));
+    proxyRes.pipe(res);
+  });
 
-      // 检查是否是 HTML 响应
-      if (contentType.includes('text/html')) {
-        // 收集完整响应体
-        let body = '';
-        proxyRes.setEncoding('utf8');
-        proxyRes.on('data', (chunk) => { body += chunk; });
-        proxyRes.on('end', () => {
-          // 注入脚本到 </head> 前
-          const modifiedBody = body.replace(/<\/head>/i, INJECTED_SCRIPT + '</head>');
+  proxyReq.on("error", (err) => {
+    console.error("[proxy error]", err.message);
+    if (!res.headersSent) {
+      res.writeHead(502, { "Content-Type": "text/plain" });
+      res.end("Gateway error\n");
+    }
+  });
 
-          // 发送修改后的响应
-          res.writeHead(proxyRes.statusCode, {
-            ...proxyRes.headers,
-            'content-length': Buffer.byteLength(modifiedBody),
-          });
-          res.end(modifiedBody);
-        });
-      } else {
-        // 不是 HTML，直接流式转发
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
-      }
-    });
+  req.pipe(proxyReq);
+}
 
-    proxyReq.on('error', (err) => {
-      console.error('[proxy error]', err.message);
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('Gateway error\n');
-      }
-    });
+// 创建代理服务器
+const server = http.createServer(async (req, res) => {
+  const pathname = pathnameOf(req.url);
+  const isApiReq = isOpencodeApiEndpoint(req.url);
+  const isPluginReq = isPluginEndpoint(req.url);
+  const isPublicReq = isPublicPath(pathname);
 
-    req.pipe(proxyReq);
-  } else {
-    // 非 HTML 请求或 SSE 请求，直接流式转发
-    const proxyReq = http.request(options, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res);
-    });
-
-    proxyReq.on('error', (err) => {
-      console.error('[proxy error]', err.message);
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('Gateway error\n');
-      }
-    });
-
-    req.pipe(proxyReq);
+  if (pathname === "/login" && (req.method === "GET" || req.method === "HEAD")) {
+    handleLoginPage(res);
+    return;
   }
+
+  if (pathname === "/login" && req.method === "POST") {
+    await handleLogin(req, res);
+    return;
+  }
+
+  if (pathname === "/logout" && (req.method === "POST" || req.method === "GET")) {
+    clearSessionCookie(res);
+    redirect(res, "/login");
+    return;
+  }
+
+  if (isPublicReq) {
+    proxyRequest(req, res, INTERNAL_PORT);
+    return;
+  }
+
+  if (!isAuthenticated(req)) {
+    if (isHtmlNavigation(req, pathname, isApiReq, isPluginReq)) {
+      redirect(res, "/login");
+      return;
+    }
+    sendUnauthorized(res);
+    return;
+  }
+
+  if (process.env.DEBUG_PROXY) {
+    console.log(`[proxy] ${req.method} ${req.url}`);
+  }
+
+  const targetPort = isPluginReq ? PLUGIN_PORT : INTERNAL_PORT;
+  proxyRequest(req, res, targetPort);
 });
 
 // WebSocket 升级处理
 server.on('upgrade', (req, socket, head) => {
-  // WebSocket 连接跳过 Basic Auth 检查
-  // 浏览器不允许在 WebSocket URL 中使用 credentials
+  if (!isAuthenticated(req)) {
+    socket.write(`HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="${AUTH_REALM}"\r\nConnection: close\r\n\r\n`);
+    socket.end();
+    return;
+  }
+
   proxyWebSocketUpgrade({
     req,
     socket,

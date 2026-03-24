@@ -38,6 +38,7 @@ Optional variables:
 | `OPENCLAW_PLUGIN_PORT` | Port for OpenClaw plugin HTTP server | 9090 |
 | `ENABLE_MONITOR` | Enable OpenCode memory monitor auto-restart | true |
 | `AUTH_REALM` | HTTP Basic Auth realm (for password manager compatibility) | opencode.tradao.xyz |
+| `OPENCODE_SESSION_SECRET` | Cookie signing secret for browser sessions | `OPENCODE_SERVER_PASSWORD` |
 
 ## Two ways to use
 
@@ -51,6 +52,7 @@ Open your Railway deployment URL in a browser. Enter the username (`opencode`) a
 - Built-in terminal for command execution
 - File browser and editor
 - Git integration
+- iOS/Safari-friendly login flow with working manifest and app icons
 
 ### 2. Terminal (CLI)
 
@@ -78,19 +80,18 @@ Mount a Railway volume at `/data` — this persists workspace and state data acr
 
 ## Architecture
 
-This template uses a Node.js proxy wrapper to add HTTP Basic Auth and automatic authentication:
+This template uses a Node.js proxy wrapper to support browser sessions and CLI authentication:
 
 ```
 Internet → Node.js Proxy (PORT 8080)
-              ↓ (Basic Auth check)
-              ↓ (HTML injection for auto-auth)
+              ↓ (Session cookie or HTTP Basic Auth)
          ├─→ Internal OpenCode (PORT 18080)  ─→ /session/*, /global/*, /agents, /tools, /events, Web UI
          └─→ OpenClaw Plugin (PORT 9090)     ─→ /register
 ```
 
 ### Key Components
 
-- **`server.js`** — Node.js proxy with Basic Auth, HTML injection, and streaming support
+- **`server.js`** — Node.js proxy with cookie session login, Basic Auth support, and streaming proxying
 - **`Dockerfile`** — Installs Bun + `opencode-ai` CLI
 - **`start.sh`** — Entry point that starts the proxy
 - **`railway.toml`** — Railway configuration
@@ -98,12 +99,14 @@ Internet → Node.js Proxy (PORT 8080)
 
 ### Why a Proxy?
 
-OpenCode's built-in web server requires authentication, but browsers don't automatically forward credentials to SPA API calls. The proxy:
+OpenCode's built-in web server is exposed only on localhost inside the container. The proxy:
 
-1. Handles HTTP Basic Auth at the edge
-2. Injects JavaScript into HTML pages to auto-authenticate API calls
-3. Properly handles WebSocket upgrades (browsers don't support WS URLs with credentials)
+1. Issues secure browser session cookies after login
+2. Still accepts HTTP Basic Auth for CLI and automation
+3. Properly handles WebSocket upgrades for browser terminals
 4. Maintains SSE streaming for real-time AI responses
+5. Exposes PWA assets without auth so browser install flows keep working
+6. Relaxes upstream CSP enough to allow Cloudflare Insights and the OpenCode changelog fetch
 
 ## Memory Monitor
 
@@ -150,19 +153,32 @@ The proxy exposes OpenCode HTTP API endpoints for external access (e.g., from `o
 | `GET /tools` | List tools |
 | `POST /register` | Register callback (plugin endpoint) |
 
-All API requests require HTTP Basic Auth:
+Machine clients can use HTTP Basic Auth:
 ```bash
 curl -u opencode:YOUR_PASSWORD https://your-app.up.railway.app/session \
   -X POST -H "Content-Type: application/json"
 ```
 
+Browser clients should sign in via `/login` and then use the session cookie automatically.
+
+The proxy also leaves these static resources publicly readable so manifests, icons, and browser install flows keep working:
+
+- `/site.webmanifest`
+- `/favicon.ico`
+- `/favicon-v3.ico`
+- `/favicon-v3.svg`
+- `/favicon-96x96-v3.png`
+- `/apple-touch-icon-v3.png`
+- `/web-app-manifest-192x192.png`
+- `/web-app-manifest-512x512.png`
+
 ## Troubleshooting
 
 ### Repeated password prompts
 
-If the browser keeps asking for your password after initial login, check:
-- JavaScript is enabled in your browser
+If the browser keeps sending you back to `/login`, check:
 - The `OPENCODE_SERVER_PASSWORD` environment variable is set correctly
+- If you override `OPENCODE_SESSION_SECRET`, make sure all instances use the same value
 - Try clearing browser cache and cookies
 
 ### Terminal not working
@@ -225,13 +241,13 @@ The `http-proxy` npm package has issues with:
 
 **Use Node.js native `http.request` instead** with `pipe()` for proper streaming.
 
-### 2. Inject auth into HTML, not just headers
+### 2. Browser auth should live at the proxy layer
 
-Browsers cache Basic Auth for the initial page load, but SPAs make API calls that don't automatically include credentials. Solution: inject JavaScript to intercept `fetch` and `XMLHttpRequest`.
+Browsers and installed web apps behave much better with a secure session cookie than with injected Basic Auth headers. Keep Basic Auth for CLI and automation, and let the proxy translate browser login into a cookie session.
 
 ### 3. WebSocket auth is special
 
-Browsers don't support credentials in WebSocket URLs (`wss://user:pass@host`). The proxy must skip auth checks for WebSocket upgrade requests — this is safe because the user has already authenticated via the initial page load.
+Browsers don't support credentials in WebSocket URLs (`wss://user:pass@host`). The proxy should authenticate the upgrade request using the existing session cookie or Basic Auth header.
 
 ### 4. SSE requires true streaming
 
@@ -240,9 +256,19 @@ Don't use `fetch()` to forward SSE requests — it buffers the entire response. 
 ### 5. HTML vs API request handling
 
 Different request types need different handling:
-- **HTML pages:** Buffer, inject auth script, send modified response
-- **API/SSE/WebSocket:** Stream directly without buffering
+- **Login page:** Serve directly from the proxy
+- **HTML/API/SSE/WebSocket:** Stream directly after auth
+- **PWA assets:** Serve without auth so manifests and install icons keep working
 - **Static assets:** Stream directly
+
+### 6. CSP is part of the deployment contract
+
+OpenCode ships with a strict CSP. The proxy now relaxes it in a narrow way so browser console noise stays low while the app remains locked down:
+
+- `script-src` allows `https://static.cloudflareinsights.com`
+- `connect-src` allows `https://opencode.ai`
+
+This keeps Cloudflare Insights and the built-in changelog fetch working without changing the OpenCode codebase.
 
 ## License
 
