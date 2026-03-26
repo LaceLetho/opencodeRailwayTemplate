@@ -32,6 +32,7 @@ Optional variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `OPENCODE_REF` | OpenCode git ref to build from, for example `v1.3.0` | `v1.3.0` |
 | `OPENCODE_MODEL` | Default model to use | - |
 | `LOG_LEVEL` | Log verbosity (DEBUG, INFO, WARN, ERROR) | WARN |
 | `DEBUG_OPENCODE_TRAFFIC` | Print suppressed OpenCode health/PTy traffic logs for debugging | false |
@@ -93,7 +94,7 @@ Internet → Node.js Proxy (PORT 8080)
 ### Key Components
 
 - **`server.js`** — Node.js proxy with cookie session login, Basic Auth support, and streaming proxying
-- **`Dockerfile`** — Installs Bun + `opencode-ai` CLI
+- **`Dockerfile`** — Clones the requested OpenCode ref, builds `packages/app`, and builds the standalone `packages/opencode` binary used at runtime
 - **`start.sh`** — Entry point that starts the proxy
 - **`railway.toml`** — Railway configuration
 - **`monitor.sh`** — Memory monitor with auto-restart (see below)
@@ -109,6 +110,64 @@ OpenCode's built-in web server is exposed only on localhost inside the container
 5. Maintains SSE streaming for real-time AI responses
 6. Exposes PWA assets without auth so browser install flows keep working
 7. Relaxes upstream CSP enough to allow Cloudflare Insights and the OpenCode changelog fetch
+
+## Version Pinning
+
+This template is designed to keep the browser frontend and the OpenCode backend on the same ref.
+
+Important details:
+
+- Upstream `opencode serve` proxies unmatched web routes to `https://app.opencode.ai`
+- Relying on that default behavior can create a mixed deployment:
+  - local backend from one ref
+  - hosted frontend from a newer upstream version
+- This template avoids that by:
+  - building `packages/app` locally from `OPENCODE_REF`
+  - building `packages/opencode` locally from the same `OPENCODE_REF`
+  - serving local static assets from `packages/app/dist` before any request reaches the internal OpenCode server
+  - launching only the prebuilt standalone binary from `packages/opencode/dist`
+
+Runtime rule:
+
+- the container only starts the compiled OpenCode binary produced during `docker build`
+- there is no runtime fallback to `bun run`, `bunx`, or source execution
+- if the compiled binary is missing, startup fails immediately with a clear error instead of trying another launch path
+
+When `OPENCODE_REF` is a semver tag such as `v1.3.0`, the Docker build also injects:
+
+- `OPENCODE_VERSION=1.3.0`
+- `OPENCODE_CHANNEL=latest`
+
+This avoids detached-HEAD preview version strings like `0.0.0--...` during the OpenCode build.
+
+### Deploy-time expectations
+
+After a successful deployment:
+
+- `GET /global/health` should report the backend version you pinned
+- the browser UI version shown in Settings should match the same pinned version
+
+### Quick verification
+
+Use Railway SSH after deployment:
+
+```bash
+railway ssh 'curl -s http://127.0.0.1:18080/global/health'
+```
+
+Expected result for `OPENCODE_REF=v1.3.0`:
+
+```json
+{"healthy":true,"version":"1.3.0"}
+```
+
+You can also verify that static assets are being served locally instead of falling through to HTML:
+
+```bash
+railway ssh 'curl -I -s http://127.0.0.1:8080/assets/index-*.js'
+```
+
+The response should be JavaScript, not `text/html`.
 
 ## Memory Monitor
 
@@ -174,6 +233,8 @@ The proxy also leaves these static resources publicly readable so manifests, ico
 - `/web-app-manifest-192x192.png`
 - `/web-app-manifest-512x512.png`
 
+If any of these local static files are missing, the proxy now returns an explicit `404` or `500` instead of silently falling back to the upstream hosted frontend.
+
 ## Troubleshooting
 
 ### Repeated password prompts
@@ -195,6 +256,42 @@ Responses should appear word-by-word. If they require page refresh:
 - Check browser console for errors
 - Verify SSE is not being blocked by browser extensions
 
+### Page loads but JS modules fail with MIME type `text/html`
+
+If the browser reports:
+
+```text
+Failed to load module script ... server responded with a MIME type of "text/html"
+```
+
+check these first:
+
+- the Docker image was rebuilt after changing `Dockerfile` or `server.js`
+- `packages/app/dist` exists inside the container
+- `packages/opencode/dist/*/bin/opencode` exists inside the container
+- the proxy is serving `/assets/*` locally rather than falling through to an HTML route
+
+This error almost always means a static asset request returned HTML instead of the expected JS bundle.
+
+### Backend version is pinned but the UI shows a different version
+
+That usually means the deployment is still using upstream hosted frontend behavior somewhere in the request path.
+
+Check:
+
+- the template version includes local `packages/app` build support
+- the deployment still contains the compiled `packages/opencode/dist/*/bin/opencode` binary
+- `/assets/*` is served from local static files
+- the current deployment was rebuilt from the updated template code, not only restarted
+
+### Browser console warning about non-passive `wheel` listener
+
+You may see a Chrome performance warning about a non-passive `wheel` listener in the session file-tab strip.
+
+- This comes from upstream app code, not from the Railway wrapper
+- It is intentional because that handler calls `preventDefault()` to translate vertical wheel motion into horizontal tab scrolling
+- It is a warning, not a functional bug
+
 ### 400 errors on shell commands
 
 If shell commands return 400 Bad Request:
@@ -211,10 +308,9 @@ git clone https://github.com/LaceLetho/opencode-railway-template.git
 cd opencode-railway-template
 
 # Make changes to server.js
-# Deploy to Railway
+# Commit changes, then trigger a Railway rebuild using your normal Git-based deploy flow
 railway login
 railway link
-railway up
 ```
 
 ### Testing locally

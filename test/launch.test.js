@@ -7,32 +7,31 @@ const { resolveOpencodeLaunch } = require("../launch");
 
 const run = () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-launch-"));
-  const bin = path.join(dir, "bin");
+  const dist = path.join(dir, "packages", "opencode", "dist", "linux-x64");
+  const bin = path.join(dist, "bin");
   fs.mkdirSync(bin, { recursive: true });
   const file = path.join(bin, "opencode");
   fs.writeFileSync(file, "#!/bin/sh\nexit 0\n");
   fs.chmodSync(file, 0o755);
 
-  const viaBin = resolveOpencodeLaunch({
+  const compiled = resolveOpencodeLaunch({
     env: {
-      BUN_INSTALL: dir,
-      PATH: "",
+      OPENCODE_SOURCE_DIR: dir,
     },
     internalPort: "18080",
     logLevel: "INFO",
   });
-  assert.equal(viaBin.mode, "opencode");
-  assert.equal(viaBin.cmd, file);
+  assert.equal(compiled.mode, "compiled");
+  assert.equal(compiled.cmd, file);
 
   const missing = resolveOpencodeLaunch({
     env: {
-      BUN_INSTALL: "/definitely-missing",
-      PATH: "",
+      OPENCODE_SOURCE_DIR: "/definitely-missing",
     },
     internalPort: "18080",
     logLevel: "INFO",
   });
-  assert.match(missing.error, /No OpenCode launcher found/);
+  assert.match(missing.error, /No compiled OpenCode launcher found/);
 
   fs.rmSync(dir, { recursive: true, force: true });
   console.log("launch resolution ok");
