@@ -279,3 +279,4 @@ MIT — see LICENSE for details.
 - [OpenCode](https://github.com/sst/opencode) — The core AI coding agent
 - [opencode-mcp](https://github.com/LaceLetho/opencode-mcp) — MCP server for Claude/Cursor integration
 - [openclaw-opencode-cli](https://github.com/LaceLetho/openclaw-opencode-cli) — CLI bridge for task dispatch
+
