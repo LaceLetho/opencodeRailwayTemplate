@@ -469,9 +469,47 @@ function hasValidRouteDirectory(pathname) {
   return fs.existsSync(dir);
 }
 
+function routeSessionParts(pathname) {
+  if (!isDirectorySessionRoute(pathname)) return;
+  const parts = pathname.split("/").filter(Boolean);
+  return {
+    slug: parts[0],
+    tail: parts.slice(1),
+  };
+}
+
+function routeSessionLocation(directory, suffix = "/session") {
+  const slug = Buffer.from(directory).toString("base64url");
+  return `/${slug}${suffix}`;
+}
+
 function rootSessionLocation() {
-  const slug = Buffer.from(WORKSPACE).toString("base64url");
-  return `/${slug}/session`;
+  return routeSessionLocation(WORKSPACE);
+}
+
+async function listDirectorySessions(directory) {
+  const res = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/session`, {
+    headers: {
+      "x-opencode-directory": directory,
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`list sessions failed: ${res.status}`);
+  return await res.json();
+}
+
+async function createDirectorySession(directory) {
+  const res = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/session`, {
+    method: "POST",
+    headers: {
+      "x-opencode-directory": directory,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(`create session failed: ${res.status}`);
+  return await res.json();
 }
 
 function isStaticAsset(pathname) {
@@ -680,6 +718,25 @@ const server = http.createServer(async (req, res) => {
     }
     sendUnauthorized(res);
     return;
+  }
+
+  if (isHtmlNavigation(req, pathname, isApiReq, isPluginReq)) {
+    const route = routeSessionParts(pathname);
+    const directory = decodeRouteDirectory(pathname);
+    if (route && directory && route.tail.length === 1 && route.tail[0] === "session" && fs.existsSync(directory)) {
+      try {
+        const sessions = await listDirectorySessions(directory);
+        if (sessions.length === 0) {
+          const session = await createDirectorySession(directory);
+          const location = routeSessionLocation(directory, `/session/${session.id}`);
+          console.log(`[wrapper] Created session ${session.id} for ${directory}`);
+          redirect(res, location);
+          return;
+        }
+      } catch (err) {
+        console.error(`[wrapper] Failed to auto-create session for ${directory}: ${err.message}`);
+      }
+    }
   }
 
   if (process.env.DEBUG_PROXY) {
