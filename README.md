@@ -37,6 +37,7 @@ Optional variables:
 | `LOG_LEVEL` | Log verbosity (DEBUG, INFO, WARN, ERROR) | WARN |
 | `DEBUG_OPENCODE_TRAFFIC` | Print suppressed OpenCode health/PTy traffic logs for debugging | false |
 | `OPENCLAW_PLUGIN_PORT` | Port for OpenClaw plugin HTTP server | 9090 |
+| `ENABLE_OH_MY_OPENCODE` | Register and bootstrap the `oh-my-opencode` plugin | true |
 | `ENABLE_MONITOR` | Enable OpenCode memory monitor auto-restart | true |
 | `AUTH_REALM` | HTTP Basic Auth realm (for password manager compatibility) | opencode.tradao.xyz |
 | `OPENCODE_SESSION_SECRET` | Cookie signing secret for browser sessions | `OPENCODE_SERVER_PASSWORD` |
@@ -94,10 +95,28 @@ Internet → Node.js Proxy (PORT 8080)
 ### Key Components
 
 - **`server.js`** — Node.js proxy with cookie session login, Basic Auth support, and streaming proxying
+- **`runtime-config.js`** — Ensures plugin entries exist in `/data/.config/opencode/opencode.json` and seeds `oh-my-opencode` config
 - **`Dockerfile`** — Clones the requested OpenCode ref, builds `packages/app`, and builds the standalone `packages/opencode` binary used at runtime
 - **`start.sh`** — Entry point that starts the proxy
 - **`railway.toml`** — Railway configuration
 - **`monitor.sh`** — Memory monitor with auto-restart (see below)
+
+## Oh My OpenCode
+
+This template now bootstraps the `oh-my-opencode` plugin package from the `oh-my-openagent` repository at container startup.
+
+- `opencode.json` is normalized to use the correct `plugin` key and includes both `@laceletho/plugin-openclaw` and `oh-my-opencode@latest`
+- `/data/.config/opencode/oh-my-opencode.json` is created automatically from `oh-my-opencode.default.json`
+- Existing `oh-my-opencode.json` customizations on the persistent volume are preserved and merged on startup
+- Set `ENABLE_OH_MY_OPENCODE=false` if you want to disable this bootstrap entirely
+
+The bundled default profile is tuned for a ChatGPT Plus + Kimi for Coding setup:
+
+- `oracle`, `prometheus`, `metis`, `momus`, `atlas`, and `hephaestus` use OpenAI models
+- `sisyphus` uses `kimi-for-coding/k2p5`
+- `explore` and `writing` fall back to `opencode/gpt-5-nano`
+
+If you want a different provider mix, update `oh-my-opencode.default.json` before deploying or edit `/data/.config/opencode/oh-my-opencode.json` on the mounted volume.
 
 ### Why a Proxy?
 

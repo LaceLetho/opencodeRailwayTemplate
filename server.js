@@ -11,6 +11,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { proxyWebSocketUpgrade } = require("./ws-proxy");
 const { resolveOpencodeLaunch } = require("./launch");
+const { ensureRuntimeConfigs } = require("./runtime-config");
 
 const PORT = process.env.PORT || "8080";
 const INTERNAL_PORT = process.env.INTERNAL_PORT || "18080";
@@ -25,6 +26,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const logLevel = process.env.LOG_LEVEL?.toUpperCase() || "WARN";
 const debugTraffic = process.env.DEBUG_OPENCODE_TRAFFIC === "true";
 const WEB_ROOT = process.env.OPENCODE_WEB_DIST_DIR || "/opt/opencode/packages/app/dist";
+const enableOhMyOpencode = process.env.ENABLE_OH_MY_OPENCODE !== "false";
 
 if (!PASSWORD) {
   console.error("ERROR: OPENCODE_SERVER_PASSWORD is required");
@@ -53,43 +55,13 @@ delete process.env.OPENCODE_SERVER_PASSWORD;
 // Set OpenClaw plugin environment variables
 process.env.OPENCLAW_PORT = PLUGIN_PORT;
 
-// Ensure opencode.json config file declares the OpenClaw plugin.
-// OpenCode will install and load the plugin at runtime from this config.
-// Note: the correct config key is "plugin" (singular), not "plugins".
-function ensurePluginConfig() {
-  const configPath = "/data/.config/opencode/opencode.json";
-
-  try {
-    let config = {};
-
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, "utf8");
-      config = JSON.parse(content);
-    }
-
-    // Remove stale "plugins" key written by a previous deployment (caused ConfigInvalidError)
-    if (config.plugins !== undefined) {
-      delete config.plugins;
-    }
-
-    // Ensure "plugin" array exists and contains the OpenClaw plugin
-    if (!config.plugin) {
-      config.plugin = [];
-    }
-
-    const pluginName = "@laceletho/plugin-openclaw";
-    if (!config.plugin.includes(pluginName)) {
-      config.plugin.push(pluginName);
-    }
-
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-  } catch (err) {
-    console.error("[wrapper] Failed to update plugin config:", err.message);
-  }
+try {
+  ensureRuntimeConfigs({
+    enableOhMyOpencode,
+  });
+} catch (err) {
+  console.error("[wrapper] Failed to update runtime config:", err.message);
 }
-
-ensurePluginConfig();
 
 console.log(`Starting OpenCode Web on port ${PORT}...`);
 console.log(`OpenCode version: ${process.env.OPENCODE_VERSION || "unknown"}`);
@@ -97,6 +69,7 @@ console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
 console.log(`Workspace: ${WORKSPACE}`);
 console.log(`Log level: ${logLevel} (set LOG_LEVEL env var to change: DEBUG, INFO, WARN, ERROR)`);
+console.log(`Oh My OpenCode: ${enableOhMyOpencode ? "enabled" : "disabled"}`);
 if (debugTraffic) {
   console.log("OpenCode traffic debug logging enabled");
 }
