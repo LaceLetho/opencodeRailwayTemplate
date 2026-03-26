@@ -444,6 +444,29 @@ function pathnameOf(url) {
   return url.split("?")[0].split("#")[0];
 }
 
+function decodeRouteDirectory(pathname) {
+  const parts = pathname.split("/").filter(Boolean);
+  const slug = parts[0];
+  if (!slug) return;
+  try {
+    return Buffer.from(slug, "base64url").toString("utf8");
+  } catch {
+    return;
+  }
+}
+
+function hasValidRouteDirectory(pathname) {
+  const dir = decodeRouteDirectory(pathname);
+  if (!dir) return true;
+  if (dir === WORKSPACE) return true;
+  return fs.existsSync(dir);
+}
+
+function rootSessionLocation() {
+  const slug = Buffer.from(WORKSPACE).toString("base64url");
+  return `/${slug}/session`;
+}
+
 function isStaticAsset(pathname) {
   return /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/.test(pathname);
 }
@@ -613,6 +636,12 @@ const server = http.createServer(async (req, res) => {
   const isApiReq = isOpencodeApiEndpoint(req.url);
   const isPluginReq = isPluginEndpoint(req.url);
   const isPublicReq = isPublicPath(pathname);
+
+  if (isHtmlNavigation(req, pathname, isApiReq, isPluginReq) && !hasValidRouteDirectory(pathname)) {
+    console.warn(`[wrapper] Missing route directory for ${pathname}, redirecting to workspace root`);
+    redirect(res, rootSessionLocation());
+    return;
+  }
 
   if (pathname === "/login" && (req.method === "GET" || req.method === "HEAD")) {
     handleLoginPage(res);
