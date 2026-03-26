@@ -8,6 +8,9 @@ const { proxyWebSocketUpgrade } = require("../ws-proxy")
 const createAccept = (key) =>
   crypto.createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64")
 
+const escapeRegex = (value) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
 const listen = (server) =>
   new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
 
@@ -68,7 +71,7 @@ const run = async () => {
   assert.match(response, /^HTTP\/1\.1 101 /)
   assert.match(response, /Upgrade: websocket/i)
   assert.match(response, /Connection: Upgrade/i)
-  assert.match(response, new RegExp(`Sec-WebSocket-Accept: ${createAccept(key)}`, "i"))
+  assert.match(response, new RegExp(`Sec-WebSocket-Accept: ${escapeRegex(createAccept(key))}`, "i"))
 
   await close(proxy)
   await close(upstream)

@@ -37,6 +37,7 @@ Optional variables:
 | `LOG_LEVEL` | Log verbosity (DEBUG, INFO, WARN, ERROR) | WARN |
 | `DEBUG_OPENCODE_TRAFFIC` | Print suppressed OpenCode health/PTy traffic logs for debugging | false |
 | `OPENCLAW_PLUGIN_PORT` | Port for OpenClaw plugin HTTP server | 9090 |
+| `ENABLE_OH_MY_OPENCODE` | Register and bootstrap the `oh-my-opencode` plugin | true |
 | `ENABLE_MONITOR` | Enable OpenCode memory monitor auto-restart | true |
 | `AUTH_REALM` | HTTP Basic Auth realm (for password manager compatibility) | opencode.tradao.xyz |
 | `OPENCODE_SESSION_SECRET` | Cookie signing secret for browser sessions | `OPENCODE_SERVER_PASSWORD` |
@@ -94,10 +95,28 @@ Internet → Node.js Proxy (PORT 8080)
 ### Key Components
 
 - **`server.js`** — Node.js proxy with cookie session login, Basic Auth support, and streaming proxying
+- **`runtime-config.js`** — Ensures plugin entries exist in `/data/.config/opencode/opencode.json` and seeds `oh-my-opencode` config
 - **`Dockerfile`** — Clones the requested OpenCode ref, builds `packages/app`, and builds the standalone `packages/opencode` binary used at runtime
 - **`start.sh`** — Entry point that starts the proxy
 - **`railway.toml`** — Railway configuration
 - **`monitor.sh`** — Memory monitor with auto-restart (see below)
+
+## Oh My OpenCode
+
+This template now bootstraps the `oh-my-opencode` plugin package from the `oh-my-openagent` repository at container startup.
+
+- `opencode.json` is normalized to use the correct `plugin` key and includes both `@laceletho/plugin-openclaw` and `oh-my-opencode@latest`
+- `/data/.config/opencode/oh-my-opencode.json` is created automatically from `oh-my-opencode.default.json`
+- Existing `oh-my-opencode.json` customizations on the persistent volume are preserved and merged on startup
+- Set `ENABLE_OH_MY_OPENCODE=false` if you want to disable this bootstrap entirely
+
+The bundled default profile is tuned for an OpenAI + Kimi for Coding + MiniMax Coding Plan setup:
+
+- `sisyphus` uses `kimi-for-coding/k2p5`, while `oracle`, `prometheus`, `metis`, `momus`, `atlas`, `sisyphus-junior`, and `hephaestus` use OpenAI models chosen for planning and deep coding
+- `explore` uses `minimax/minimax-m2.7` so fast codebase search and lightweight utility work can lean on MiniMax
+- Category defaults also bias cheaper work toward MiniMax and Kimi: `quick` and `unspecified-low` use `minimax/minimax-m2.7`, `writing` and `visual-engineering` use `kimi-for-coding/k2p5`, `unspecified-high` uses `openai/gpt-5.4`, and `deep` stays on `openai/gpt-5.3-codex`
+
+If you want a different provider mix, update `oh-my-opencode.default.json` before deploying or edit `/data/.config/opencode/oh-my-opencode.json` on the mounted volume.
 
 ### Why a Proxy?
 
