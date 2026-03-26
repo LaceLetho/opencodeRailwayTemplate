@@ -9,10 +9,12 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const crypto = require("crypto");
 const { proxyWebSocketUpgrade } = require("./ws-proxy");
+const { resolveOpencodeLaunch } = require("./launch");
 
 const PORT = process.env.PORT || "8080";
 const INTERNAL_PORT = process.env.INTERNAL_PORT || "18080";
 const PLUGIN_PORT = process.env.OPENCLAW_PLUGIN_PORT || "9090";
+const WORKSPACE = process.env.OPENCODE_WORKSPACE || "/data/workspace";
 const PASSWORD = process.env.OPENCODE_SERVER_PASSWORD;
 const USERNAME = process.env.OPENCODE_SERVER_USERNAME || "opencode";
 const AUTH_REALM = process.env.AUTH_REALM || "opencode.tradao.xyz";
@@ -29,7 +31,7 @@ if (!PASSWORD) {
 
 // Create persistent directories
 const dirs = [
-  "/data/workspace",
+  WORKSPACE,
   "/data/.local/share/opencode",
   "/data/.local/state/opencode",
   "/data/.config/opencode",
@@ -91,18 +93,29 @@ console.log(`Starting OpenCode Web on port ${PORT}...`);
 console.log(`OpenCode version: ${process.env.OPENCODE_VERSION || "unknown"}`);
 console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
-console.log(`Workspace: /data/workspace`);
+console.log(`Workspace: ${WORKSPACE}`);
 console.log(`Log level: ${logLevel} (set LOG_LEVEL env var to change: DEBUG, INFO, WARN, ERROR)`);
 if (debugTraffic) {
   console.log("OpenCode traffic debug logging enabled");
 }
 
+const launch = resolveOpencodeLaunch({
+  env: process.env,
+  internalPort: INTERNAL_PORT,
+  logLevel,
+});
+if (launch.error) {
+  console.error(`[wrapper] ${launch.error}`);
+  process.exit(1);
+}
+console.log(`[wrapper] Launching OpenCode via ${launch.mode}: ${launch.cmd}`);
+
 // Start headless opencode server (internal port, not publicly exposed)
 const opencode = spawn(
-  "bunx",
-  ["opencode", "--print-logs", "--log-level", logLevel, "serve", "--port", INTERNAL_PORT, "--hostname", "127.0.0.1"],
+  launch.cmd,
+  launch.args,
   {
-    cwd: "/data/workspace/tradao",
+    cwd: WORKSPACE,
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,
   }

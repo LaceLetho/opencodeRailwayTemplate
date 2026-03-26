@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "bash start.sh",
-    "test": "node test/ws-proxy.test.js"
+    "test": "node test/ws-proxy.test.js && node test/launch.test.js"
   },
   "dependencies": {}
 }
