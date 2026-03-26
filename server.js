@@ -88,6 +88,7 @@ function ensurePluginConfig() {
 ensurePluginConfig();
 
 console.log(`Starting OpenCode Web on port ${PORT}...`);
+console.log(`OpenCode version: ${process.env.OPENCODE_VERSION || "unknown"}`);
 console.log(`Internal port: ${INTERNAL_PORT}`);
 console.log(`Plugin port: ${PLUGIN_PORT}`);
 console.log(`Workspace: /data/workspace`);

@@ -1,6 +1,7 @@
 FROM node:22-bookworm
 
 ENV NODE_ENV=production
+ARG OPENCODE_VERSION=1.3.2
 
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -19,8 +20,8 @@ ENV PATH="$BUN_INSTALL/bin:$PATH"
 # Verify bun
 RUN bun --version
 
-# Install OpenCode CLI
-RUN bun install -g opencode-ai
+# Install a pinned OpenCode version so redeploys do not silently drift.
+RUN bun install -g opencode-ai@${OPENCODE_VERSION}
 
 WORKDIR /app
 
