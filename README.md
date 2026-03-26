@@ -110,11 +110,11 @@ This template now bootstraps the `oh-my-opencode` plugin package from the `oh-my
 - Existing `oh-my-opencode.json` customizations on the persistent volume are preserved and merged on startup
 - Set `ENABLE_OH_MY_OPENCODE=false` if you want to disable this bootstrap entirely
 
-The bundled default profile is tuned for a ChatGPT Plus + Kimi for Coding setup:
+The bundled default profile is tuned for an OpenAI + Kimi for Coding + MiniMax Coding Plan setup:
 
-- `oracle`, `prometheus`, `metis`, `momus`, `atlas`, and `hephaestus` use OpenAI models
-- `sisyphus` uses `kimi-for-coding/k2p5`
-- `explore` and `writing` fall back to `opencode/gpt-5-nano`
+- `sisyphus` uses `kimi-for-coding/k2p5`, while `oracle`, `prometheus`, `metis`, `momus`, `atlas`, `sisyphus-junior`, and `hephaestus` use OpenAI models chosen for planning and deep coding
+- `explore` uses `minimax/minimax-m2.7` so fast codebase search and lightweight utility work can lean on MiniMax
+- Category defaults also bias cheaper work toward MiniMax and Kimi: `quick` and `unspecified-low` use `minimax/minimax-m2.7`, `writing` and `visual-engineering` use `kimi-for-coding/k2p5`, `unspecified-high` uses `openai/gpt-5.4`, and `deep` stays on `openai/gpt-5.3-codex`
 
 If you want a different provider mix, update `oh-my-opencode.default.json` before deploying or edit `/data/.config/opencode/oh-my-opencode.json` on the mounted volume.
 
