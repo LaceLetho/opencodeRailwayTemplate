@@ -67,9 +67,10 @@ const run = () => {
   const omoTemplatePath = path.join(dir, "oh-my-opencode.default.json");
 
   writeJson(omoTemplatePath, {
+    $schema: "https://example.com/schema.json",
     agents: {
-      sisyphus: { model: "kimi-for-coding/k2p5" },
-      oracle: { model: "openai/gpt-5.4", variant: "high" },
+      explore: { model: "kimi-for-coding/k2p5" },
+      librarian: { model: "kimi-for-coding/k2p5" },
     },
   });
   writeJson(opencodeConfigPath, {
@@ -78,7 +79,8 @@ const run = () => {
   });
   writeJson(omoConfigPath, {
     agents: {
-      oracle: { variant: "medium" },
+      librarian: { model: "kimi-for-coding/k2p5" },
+      oracle: { model: "openai/gpt-5.4", variant: "medium" },
     },
   });
 
@@ -93,8 +95,10 @@ const run = () => {
     plugin: ["oh-my-openagent@beta", "@laceletho/plugin-openclaw"],
   });
   assert.deepEqual(JSON.parse(fs.readFileSync(omoConfigPath, "utf8")), {
+    $schema: "https://example.com/schema.json",
     agents: {
-      sisyphus: { model: "kimi-for-coding/k2p5" },
+      explore: { model: "kimi-for-coding/k2p5" },
+      librarian: { model: "kimi-for-coding/k2p5" },
       oracle: { model: "openai/gpt-5.4", variant: "medium" },
     },
   });

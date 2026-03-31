@@ -117,11 +117,11 @@ This template now bootstraps the `oh-my-opencode` plugin package from the `oh-my
 - Existing `oh-my-opencode.json` customizations on the persistent volume are preserved and merged on startup
 - Set `ENABLE_OH_MY_OPENCODE=false` if you want to disable this bootstrap entirely
 
-The bundled default profile is tuned for an OpenAI + Kimi for Coding + MiniMax Coding Plan setup:
+The bundled default profile mostly defers agent/category model selection to `oh-my-openagent` itself:
 
-- `sisyphus` uses `kimi-for-coding/k2p5`, while `oracle`, `prometheus`, `metis`, `momus`, `atlas`, `sisyphus-junior`, and `hephaestus` use OpenAI models chosen for planning and deep coding
-- `explore` uses `minimax/minimax-m2.7` so fast codebase search and lightweight utility work can lean on MiniMax
-- Category defaults also bias cheaper work toward MiniMax and Kimi: `quick` and `unspecified-low` use `minimax/minimax-m2.7`, `writing` and `visual-engineering` use `kimi-for-coding/k2p5`, `unspecified-high` uses `openai/gpt-5.4`, and `deep` stays on `openai/gpt-5.3-codex`
+- builtin agent/category defaults still come from `oh-my-openagent/src/shared/model-requirements.ts`
+- the template only pins `explore` and `librarian` to `kimi-for-coding/k2p5`; other agents and categories are left to the upstream fallback chains
+- this template intentionally does not inject `fallback_models`, because `oh-my-openagent` resolves `fallback_models` before its built-in `fallbackChain`; forcing them here would accidentally change upstream model priority
 
 If you want a different provider mix, update `oh-my-opencode.default.json` before deploying or edit `/data/.config/opencode/oh-my-opencode.json` on the mounted volume.
 
