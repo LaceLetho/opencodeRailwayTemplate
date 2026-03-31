@@ -4,7 +4,6 @@ const os = require("os");
 const path = require("path");
 
 const {
-  deepMerge,
   ensurePluginEntries,
   ensureRuntimeConfigs,
 } = require("../runtime-config");
@@ -37,28 +36,6 @@ const run = () => {
   assert.deepEqual(
     ensurePluginEntries(["oh-my-opencode@latest", "@laceletho/plugin-openclaw"], false),
     ["@laceletho/plugin-openclaw"],
-  );
-
-  assert.deepEqual(
-    deepMerge(
-      {
-        agents: {
-          oracle: { model: "openai/gpt-5.4", variant: "high" },
-          explore: { model: "opencode/gpt-5-nano" },
-        },
-      },
-      {
-        agents: {
-          oracle: { variant: "medium" },
-        },
-      },
-    ),
-    {
-      agents: {
-        oracle: { model: "openai/gpt-5.4", variant: "medium" },
-        explore: { model: "opencode/gpt-5-nano" },
-      },
-    },
   );
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-runtime-config-"));
@@ -99,7 +76,6 @@ const run = () => {
     agents: {
       explore: { model: "kimi-for-coding/k2p5" },
       librarian: { model: "kimi-for-coding/k2p5" },
-      oracle: { model: "openai/gpt-5.4", variant: "medium" },
     },
   });
 

@@ -102,7 +102,7 @@ Internet → Node.js Proxy (PORT 8080)
 ### Key Components
 
 - **`server.js`** — Node.js proxy with cookie session login, Basic Auth support, and streaming proxying
-- **`runtime-config.js`** — Ensures plugin entries exist in `/data/.config/opencode/opencode.json` and seeds `oh-my-opencode` config
+- **`runtime-config.js`** — Ensures plugin entries exist in `/data/.config/opencode/opencode.json` and resets `oh-my-opencode` config from the bundled default
 - **`Dockerfile`** — Either clones `OPENCODE_REF` and builds `packages/app` + `packages/opencode`, or installs the latest published `opencode-ai` package when `SOURCE_MODE=false`
 - **`start.sh`** — Entry point that starts the proxy
 - **`railway.toml`** — Railway configuration
@@ -113,8 +113,7 @@ Internet → Node.js Proxy (PORT 8080)
 This template now bootstraps the `oh-my-opencode` plugin package from the `oh-my-openagent` repository at container startup.
 
 - `opencode.json` is normalized to use the correct `plugin` key and includes both `@laceletho/plugin-openclaw` and `oh-my-opencode@latest`
-- `/data/.config/opencode/oh-my-opencode.json` is created automatically from `oh-my-opencode.default.json`
-- Existing `oh-my-opencode.json` customizations on the persistent volume are preserved and merged on startup
+- On every startup, `/data/.config/opencode/oh-my-opencode.json` is deleted and recreated from `oh-my-opencode.default.json`
 - Set `ENABLE_OH_MY_OPENCODE=false` if you want to disable this bootstrap entirely
 
 The bundled default profile mostly defers agent/category model selection to `oh-my-openagent` itself:
@@ -123,7 +122,7 @@ The bundled default profile mostly defers agent/category model selection to `oh-
 - the template only pins `explore` and `librarian` to `kimi-for-coding/k2p5`; other agents and categories are left to the upstream fallback chains
 - this template intentionally does not inject `fallback_models`, because `oh-my-openagent` resolves `fallback_models` before its built-in `fallbackChain`; forcing them here would accidentally change upstream model priority
 
-If you want a different provider mix, update `oh-my-opencode.default.json` before deploying or edit `/data/.config/opencode/oh-my-opencode.json` on the mounted volume.
+If you want a different provider mix, update `oh-my-opencode.default.json` before deploying. Edits made directly to `/data/.config/opencode/oh-my-opencode.json` on the mounted volume are discarded on the next restart or redeploy.
 
 ### Why a Proxy?
 

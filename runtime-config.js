@@ -9,8 +9,6 @@ const DEFAULT_OPENCODE_CONFIG_PATH = "/data/.config/opencode/opencode.json";
 const DEFAULT_OMO_CONFIG_PATH = "/data/.config/opencode/oh-my-opencode.json";
 const DEFAULT_OMO_TEMPLATE_PATH = path.join(__dirname, "oh-my-opencode.default.json");
 
-const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
 const readJson = (filePath, fallback) => {
   if (!fs.existsSync(filePath)) {
     return fallback;
@@ -77,32 +75,6 @@ const ensurePluginEntries = (plugins, enableOhMyOpencode) => {
   return next;
 };
 
-const deepMerge = (base, override) => {
-  if (!isRecord(base)) {
-    return override;
-  }
-
-  if (!isRecord(override)) {
-    return { ...base };
-  }
-
-  const merged = { ...base };
-
-  for (const key of Object.keys(override)) {
-    const baseValue = merged[key];
-    const overrideValue = override[key];
-
-    if (isRecord(baseValue) && isRecord(overrideValue)) {
-      merged[key] = deepMerge(baseValue, overrideValue);
-      continue;
-    }
-
-    merged[key] = overrideValue;
-  }
-
-  return merged;
-};
-
 const ensureRuntimeConfigs = (opts = {}) => {
   const opencodeConfigPath = opts.opencodeConfigPath || DEFAULT_OPENCODE_CONFIG_PATH;
   const omoConfigPath = opts.omoConfigPath || DEFAULT_OMO_CONFIG_PATH;
@@ -121,12 +93,13 @@ const ensureRuntimeConfigs = (opts = {}) => {
   }
 
   const defaults = readJson(omoTemplatePath, {});
-  const current = readJson(omoConfigPath, {});
-  writeJson(omoConfigPath, deepMerge(defaults, current));
+  if (fs.existsSync(omoConfigPath)) {
+    fs.rmSync(omoConfigPath, { force: true });
+  }
+  writeJson(omoConfigPath, defaults);
 };
 
 module.exports = {
-  deepMerge,
   ensurePluginEntries,
   ensureRuntimeConfigs,
 };
