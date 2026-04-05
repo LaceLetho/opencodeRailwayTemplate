@@ -6,10 +6,6 @@
     },
     "librarian": {
       "model": "kimi-for-coding/k2p5"
-    },
-    "prometheus": {
-      "model": "openai/gpt-5.4",
-      "variant": "high"
     }
   }
 }
