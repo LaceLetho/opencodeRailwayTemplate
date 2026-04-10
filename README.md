@@ -38,9 +38,6 @@ Deploy OpenCode on Railway with the pieces that matter in production: pinned fro
 | Variable | Description |
 | --- | --- |
 | `OPENCODE_SERVER_PASSWORD` | Required. Login password for browser and CLI Basic Auth. |
-| `ANTHROPIC_API_KEY` | AI provider key. Set at least one of this, `MINIMAX_API_KEY`, or `GLM_API_KEY`. |
-| `MINIMAX_API_KEY` | AI provider key. |
-| `GLM_API_KEY` | AI provider key. |
 
 ## Common Optional Environment Variables
 

@@ -10,6 +10,5 @@ requiredMountPath = "/data"
 
 # Required user variables (set in Railway dashboard):
 #   OPENCODE_SERVER_PASSWORD — HTTP Basic Auth password (required)
-#   ANTHROPIC_API_KEY / MINIMAX_API_KEY / GLM_API_KEY — at least one API key
 #   OPENCODE_MODEL — optional, e.g. anthropic/claude-sonnet-4-5
 #   ENABLE_MONITOR — optional, enable memory monitor auto-restart (default: false)

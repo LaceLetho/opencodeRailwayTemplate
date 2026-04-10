@@ -38,9 +38,6 @@
 | 变量 | 说明 |
 | --- | --- |
 | `OPENCODE_SERVER_PASSWORD` | 必填。浏览器登录和 CLI Basic Auth 共用的密码。 |
-| `ANTHROPIC_API_KEY` | AI 提供商密钥。与 `MINIMAX_API_KEY`、`GLM_API_KEY` 三选一至少填一个。 |
-| `MINIMAX_API_KEY` | AI 提供商密钥。 |
-| `GLM_API_KEY` | AI 提供商密钥。 |
 
 ## 常用可选环境变量
 
