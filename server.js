@@ -12,6 +12,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { proxyWebSocketUpgrade } = require("./ws-proxy");
 const { resolveOpencodeLaunch } = require("./launch");
+const { refreshPluginCache } = require("./plugin-refresh");
 const { ensureRuntimeConfigs } = require("./runtime-config");
 const { isSourceMode } = require("./source-mode");
 
@@ -67,6 +68,21 @@ try {
   });
 } catch (err) {
   console.error("[wrapper] Failed to update runtime config:", err.message);
+}
+
+try {
+  const result = refreshPluginCache();
+  if (result.action === "refreshed") {
+    console.log(`[wrapper] Refreshed oh-my plugin cache for deployment ${result.deployment}`);
+  }
+  if (result.action === "noop") {
+    console.log(`[wrapper] Oh-my plugin cache already refreshed for deployment ${result.deployment}`);
+  }
+  if (result.action === "skipped") {
+    console.log(`[wrapper] Skipped oh-my plugin refresh: ${result.reason}`);
+  }
+} catch (err) {
+  console.error("[wrapper] Failed to refresh oh-my plugin cache:", err.message);
 }
 
 console.log(`Starting OpenCode Web on port ${PORT}...`);

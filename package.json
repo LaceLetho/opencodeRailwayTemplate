@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "bash start.sh",
-    "test": "node test/ws-proxy.test.js && node test/source-mode.test.js && node test/launch.test.js && node test/runtime-config.test.js"
+    "test": "node test/ws-proxy.test.js && node test/source-mode.test.js && node test/launch.test.js && node test/runtime-config.test.js && node test/plugin-refresh.test.js"
   },
   "dependencies": {}
 }

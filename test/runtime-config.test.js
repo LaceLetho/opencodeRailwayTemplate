@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 
 const {
+  OMO_PLUGIN,
   ensurePluginEntries,
   ensureRuntimeConfigs,
 } = require("../runtime-config");
@@ -15,12 +16,12 @@ const writeJson = (filePath, value) => {
 const run = () => {
   assert.deepEqual(
     ensurePluginEntries([], true),
-    ["@laceletho/plugin-openclaw", "oh-my-opencode@latest"],
+    ["@laceletho/plugin-openclaw", OMO_PLUGIN],
   );
 
   assert.deepEqual(
     ensurePluginEntries(["oh-my-openagent@beta"], true),
-    ["oh-my-openagent@beta", "@laceletho/plugin-openclaw"],
+    [OMO_PLUGIN, "@laceletho/plugin-openclaw"],
   );
 
   assert.deepEqual(
@@ -30,7 +31,7 @@ const run = () => {
 
   assert.deepEqual(
     ensurePluginEntries(["oh-my-opencode@1.2.3", "@laceletho/plugin-openclaw"], true),
-    ["oh-my-opencode@1.2.3", "@laceletho/plugin-openclaw"],
+    [OMO_PLUGIN, "@laceletho/plugin-openclaw"],
   );
 
   assert.deepEqual(
@@ -40,7 +41,10 @@ const run = () => {
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-runtime-config-"));
   const opencodeConfigPath = path.join(dir, "opencode.json");
+  const omoConfigJsoncPath = path.join(dir, "oh-my-opencode.jsonc");
   const omoConfigPath = path.join(dir, "oh-my-opencode.json");
+  const omoCanonicalConfigJsoncPath = path.join(dir, "oh-my-openagent.jsonc");
+  const omoCanonicalConfigPath = path.join(dir, "oh-my-openagent.json");
   const omoTemplatePath = path.join(dir, "oh-my-opencode.default.json");
 
   writeJson(omoTemplatePath, {
@@ -60,18 +64,44 @@ const run = () => {
       oracle: { model: "openai/gpt-5.4", variant: "medium" },
     },
   });
+  writeJson(omoConfigJsoncPath, { stale: true });
+  writeJson(omoCanonicalConfigJsoncPath, { stale: true });
 
   ensureRuntimeConfigs({
     opencodeConfigPath,
+    omoConfigJsoncPath,
     omoConfigPath,
+    omoCanonicalConfigJsoncPath,
+    omoCanonicalConfigPath,
     omoTemplatePath,
     enableOhMyOpencode: true,
   });
 
   assert.deepEqual(JSON.parse(fs.readFileSync(opencodeConfigPath, "utf8")), {
-    plugin: ["oh-my-openagent@beta", "@laceletho/plugin-openclaw"],
+    plugin: [OMO_PLUGIN, "@laceletho/plugin-openclaw"],
   });
   assert.deepEqual(JSON.parse(fs.readFileSync(omoConfigPath, "utf8")), {
+    $schema: "https://example.com/schema.json",
+    agents: {
+      explore: { model: "kimi-for-coding/k2p5" },
+      librarian: { model: "kimi-for-coding/k2p5" },
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(omoConfigJsoncPath, "utf8")), {
+    $schema: "https://example.com/schema.json",
+    agents: {
+      explore: { model: "kimi-for-coding/k2p5" },
+      librarian: { model: "kimi-for-coding/k2p5" },
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(omoCanonicalConfigPath, "utf8")), {
+    $schema: "https://example.com/schema.json",
+    agents: {
+      explore: { model: "kimi-for-coding/k2p5" },
+      librarian: { model: "kimi-for-coding/k2p5" },
+    },
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(omoCanonicalConfigJsoncPath, "utf8")), {
     $schema: "https://example.com/schema.json",
     agents: {
       explore: { model: "kimi-for-coding/k2p5" },
@@ -85,7 +115,10 @@ const run = () => {
 
   ensureRuntimeConfigs({
     opencodeConfigPath,
+    omoConfigJsoncPath,
     omoConfigPath,
+    omoCanonicalConfigJsoncPath,
+    omoCanonicalConfigPath,
     omoTemplatePath,
     enableOhMyOpencode: false,
   });

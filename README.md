@@ -42,6 +42,7 @@ Optional variables:
 | `LOG_SLEEP_BLOCKERS` | Log inbound probes and non-loopback outbound requests that can keep Serverless awake | true |
 | `OPENCLAW_PLUGIN_PORT` | Port for OpenClaw plugin HTTP server | 9090 |
 | `ENABLE_OH_MY_OPENCODE` | Register and bootstrap the `oh-my-opencode` plugin | true |
+| `ENABLE_OMO_REDEPLOY_REFRESH` | Refresh the cached oh-my plugin when Railway deployment id changes before OpenCode starts | true |
 | `ENABLE_MONITOR` | Enable OpenCode memory monitor auto-restart | false |
 | `AUTH_REALM` | HTTP Basic Auth realm (for password manager compatibility) | opencode.tradao.xyz |
 | `OPENCODE_SESSION_SECRET` | Cookie signing secret for browser sessions | `OPENCODE_SERVER_PASSWORD` |
@@ -51,6 +52,13 @@ Optional variables:
 ### 1. Web UI (Browser)
 
 Open your Railway deployment URL in a browser. Enter the username (`opencode`) and password you configured.
+
+When `ENABLE_OH_MY_OPENCODE=true`, the wrapper now normalizes the plugin entry to `oh-my-openagent@latest`. On Railway, the wrapper also tracks `RAILWAY_DEPLOYMENT_ID` (falling back to `RAILWAY_SNAPSHOT_ID`) in `/data/.local/state/opencode/oh-my-plugin-refresh.json` and clears the cached oh-my plugin only when that deployment id changes. This means:
+
+- **Redeploy** → cached plugin is invalidated before OpenCode starts, so the latest plugin is fetched again
+- **Restart within the same deployment** → no cache purge, so startup stays fast
+
+Set `ENABLE_OMO_REDEPLOY_REFRESH=false` if you want to keep the cached plugin across redeploys.
 
 **Features:**
 - Create and manage multiple sessions

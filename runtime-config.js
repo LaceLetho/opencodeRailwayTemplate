@@ -2,10 +2,13 @@ const fs = require("fs");
 const path = require("path");
 
 const OPENCLAW_PLUGIN = "@laceletho/plugin-openclaw";
-const OMO_PLUGIN = "oh-my-opencode@latest";
-const OMO_PLUGIN_NAME = "oh-my-opencode";
-const OMO_LEGACY_PLUGIN_NAME = "oh-my-openagent";
+const OMO_PLUGIN = "oh-my-openagent@latest";
+const OMO_PLUGIN_NAME = "oh-my-openagent";
+const OMO_LEGACY_PLUGIN_NAME = "oh-my-opencode";
 const DEFAULT_OPENCODE_CONFIG_PATH = "/data/.config/opencode/opencode.json";
+const DEFAULT_OMO_CANONICAL_CONFIG_JSONC_PATH = "/data/.config/opencode/oh-my-openagent.jsonc";
+const DEFAULT_OMO_CANONICAL_CONFIG_PATH = "/data/.config/opencode/oh-my-openagent.json";
+const DEFAULT_OMO_CONFIG_JSONC_PATH = "/data/.config/opencode/oh-my-opencode.jsonc";
 const DEFAULT_OMO_CONFIG_PATH = "/data/.config/opencode/oh-my-opencode.json";
 const DEFAULT_OMO_TEMPLATE_PATH = path.join(__dirname, "oh-my-opencode.default.json");
 
@@ -51,7 +54,7 @@ const ensurePluginEntries = (plugins, enableOhMyOpencode) => {
 
     if (isOhMyOpencodePlugin(value)) {
       if (enableOhMyOpencode && !hasOhMyOpencode) {
-        next.push(value);
+        next.push(OMO_PLUGIN);
         hasOhMyOpencode = true;
       }
       continue;
@@ -77,7 +80,10 @@ const ensurePluginEntries = (plugins, enableOhMyOpencode) => {
 
 const ensureRuntimeConfigs = (opts = {}) => {
   const opencodeConfigPath = opts.opencodeConfigPath || DEFAULT_OPENCODE_CONFIG_PATH;
+  const omoConfigJsoncPath = opts.omoConfigJsoncPath || DEFAULT_OMO_CONFIG_JSONC_PATH;
   const omoConfigPath = opts.omoConfigPath || DEFAULT_OMO_CONFIG_PATH;
+  const omoCanonicalConfigJsoncPath = opts.omoCanonicalConfigJsoncPath || DEFAULT_OMO_CANONICAL_CONFIG_JSONC_PATH;
+  const omoCanonicalConfigPath = opts.omoCanonicalConfigPath || DEFAULT_OMO_CANONICAL_CONFIG_PATH;
   const omoTemplatePath = opts.omoTemplatePath || DEFAULT_OMO_TEMPLATE_PATH;
   const enableOhMyOpencode = opts.enableOhMyOpencode !== false;
 
@@ -93,13 +99,26 @@ const ensureRuntimeConfigs = (opts = {}) => {
   }
 
   const defaults = readJson(omoTemplatePath, {});
-  if (fs.existsSync(omoConfigPath)) {
-    fs.rmSync(omoConfigPath, { force: true });
+  for (const filePath of [
+    omoConfigJsoncPath,
+    omoConfigPath,
+    omoCanonicalConfigJsoncPath,
+    omoCanonicalConfigPath,
+  ]) {
+    if (fs.existsSync(filePath)) {
+      fs.rmSync(filePath, { force: true });
+    }
   }
+  writeJson(omoConfigJsoncPath, defaults);
   writeJson(omoConfigPath, defaults);
+  writeJson(omoCanonicalConfigJsoncPath, defaults);
+  writeJson(omoCanonicalConfigPath, defaults);
 };
 
 module.exports = {
+  OMO_LEGACY_PLUGIN_NAME,
+  OMO_PLUGIN,
+  OMO_PLUGIN_NAME,
   ensurePluginEntries,
   ensureRuntimeConfigs,
 };
