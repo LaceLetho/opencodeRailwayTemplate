@@ -4,7 +4,7 @@
 
 Deploy OpenCode on Railway with the pieces that matter in production: pinned frontend + backend from the same source ref, browser-friendly auth, idle high-memory auto-restart, and automatic plugin refresh.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/f0oQvM?referralCode=Se0h8C&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/opencode?referralCode=Se0h8C&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## Why This Template
 

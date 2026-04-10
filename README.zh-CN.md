@@ -4,7 +4,7 @@
 
 部署到 Railway 的 OpenCode 模板，默认补齐生产环境真正需要的几件事：同版本前后端、浏览器友好的认证方式、空闲高内存自动重启，以及插件自动刷新。
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/f0oQvM?referralCode=Se0h8C&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/opencode?referralCode=Se0h8C&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## 这个模板的特点
 
