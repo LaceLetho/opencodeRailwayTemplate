@@ -34,7 +34,6 @@ const enableOhMyOpencode = process.env.ENABLE_OH_MY_OPENCODE !== "false";
 const enableOpenclawPlugin = process.env.ENABLE_OPENCLAW_PLUGIN === "true";
 const enableOmoDefaultConfig = process.env.ENABLE_OMO_DEFAULT_CONFIG === "true";
 const ACTIVITY_FILE = process.env.OPENCODE_ACTIVITY_FILE || "/tmp/opencode_monitor_state_v5/last_activity";
-const SESSION_STATUS_POLL_MS = Number(process.env.OPENCODE_SESSION_STATUS_POLL_MS || "60000");
 const sleepDebug = process.env.LOG_SLEEP_BLOCKERS !== "false";
 
 if (!PASSWORD) {
@@ -291,7 +290,6 @@ const opencode = spawn(
 );
 
 let receivedSigterm = false;
-let sessionStatusTimer;
 
 function shouldSuppressLog(trimmed) {
   if (debugTraffic) return false;
@@ -322,10 +320,20 @@ function shouldSuppressLog(trimmed) {
   return false;
 }
 
+function shouldTouchActivityFromLog(trimmed) {
+  if (!trimmed.startsWith("INFO")) return false;
+  if (trimmed.includes("service=session.processor") && trimmed.includes(" process")) return true;
+  if (trimmed.includes("service=llm") && trimmed.includes(" stream")) return true;
+  if (trimmed.includes("type=message.part.delta") && trimmed.includes(" publishing")) return true;
+  if (trimmed.includes("type=message.part.updated") && trimmed.includes(" publishing")) return true;
+  return false;
+}
+
 // Log classification: ERROR/WARN -> stderr, others -> stdout
 function classifyAndOutput(line) {
   const trimmed = line.toString().trim();
   if (!trimmed) return;
+  if (shouldTouchActivityFromLog(trimmed)) touchActivity();
   if (shouldSuppressLog(trimmed)) return;
 
   if (trimmed.startsWith("ERROR") || trimmed.startsWith("WARN")) {
@@ -622,39 +630,6 @@ function touchActivity() {
   } catch (err) {
     console.error(`[wrapper] Failed to update activity file: ${err.message}`);
   }
-}
-
-async function hasActiveSessions() {
-  try {
-    const res = await fetch(`http://127.0.0.1:${INTERNAL_PORT}/session/status`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-    if (!res.ok) {
-      console.error(`[wrapper] Session status poll failed: ${res.status}`);
-      return false;
-    }
-    const data = await res.json();
-    return Object.values(data).some((status) => status?.type === "busy" || status?.type === "retry");
-  } catch (err) {
-    console.error(`[wrapper] Session status poll error: ${err.message}`);
-    return false;
-  }
-}
-
-function startSessionStatusPolling() {
-  const tick = async () => {
-    if (await hasActiveSessions()) {
-      touchActivity();
-    }
-  };
-
-  void tick();
-  sessionStatusTimer = setInterval(() => {
-    void tick();
-  }, SESSION_STATUS_POLL_MS);
-  sessionStatusTimer.unref?.();
 }
 
 function isDirectorySessionRoute(pathname) {
@@ -1140,8 +1115,6 @@ async function start() {
   }
   console.log("[wrapper] OpenCode is ready");
 
-  startSessionStatusPolling();
-
   // Start monitor (after OpenCode is ready)
   startMonitor();
 
@@ -1165,11 +1138,6 @@ function gracefulShutdown(signal) {
   receivedSigterm = true;
 
   console.log(`[wrapper] Received ${signal}, initiating graceful shutdown...`);
-
-  if (sessionStatusTimer) {
-    clearInterval(sessionStatusTimer);
-    sessionStatusTimer = undefined;
-  }
 
   // Close proxy server
   server.close(() => {
