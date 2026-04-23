@@ -98,12 +98,34 @@ opencode attach https://your-app.up.railway.app/ -p YOUR_PASSWORD
 - 如果你也想自动注入 `@laceletho/plugin-openclaw`，设置 `ENABLE_OPENCLAW_PLUGIN=true`。
 - 如果你想在启动时用仓库内置模板重建 oh-my 配置，设置 `ENABLE_OMO_DEFAULT_CONFIG=true`。
 - 检测到新的 Railway deployment id 时，会清理缓存并重新拉取最新版 oh-my 插件。
+- 同一个 Railway deployment 内的重启会保留插件缓存，以保证启动更快、行为更稳定。
 
 如果你不想启用这套行为，可以设置：
 
 ```bash
 ENABLE_OH_MY_OPENCODE=false
 ```
+
+## 手动升级插件
+
+OpenCode 会把 npm 插件缓存到 `~/.cache/opencode/packages/<spec>`。执行 `opencode plugin <pkg> --force -g` 会更新配置里的插件 spec，但它本身不会主动失效已经存在的 `@latest` 缓存目录。
+
+如果你需要强制把某个已安装插件刷新到 npm 上最新发布的版本，推荐先删除对应缓存目录，再重新执行插件安装命令：
+
+```bash
+rm -rf ~/.cache/opencode/packages/@laceletho/plugin-openclaw@latest
+opencode plugin @laceletho/plugin-openclaw --force -g
+```
+
+当 `@latest` 缓存已经陈旧时，这是升级 npm 型 OpenCode 插件的推荐手动流程。
+
+对于 `oh-my-openagent`，这个模板已经在 Railway redeploy 时自动实现了同样的“删缓存再重拉”思路：
+
+- 配置里始终保持 `oh-my-openagent@latest`
+- 检测到新的 Railway deployment id 时，删除缓存的 `oh-my-openagent@latest` 包
+- 下一次启动时重新拉取当前 npm 上最新发布的版本
+
+这套机制本身就是适合模板场景的实现，不需要改成手工执行 `opencode plugin ... --force -g`。如果你想在不 redeploy 的前提下强制刷新同一个 deployment 里的插件版本，再使用上面的手动删缓存流程。
 
 ## 本地运行
 
