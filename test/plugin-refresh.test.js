@@ -4,7 +4,13 @@ const os = require("os");
 const path = require("path");
 
 const { OMO_PLUGIN } = require("../runtime-config");
-const { DEFAULT_STATE_PATH, getDeploymentId, getDeploymentState, refreshPluginCache } = require("../plugin-refresh");
+const {
+  DEFAULT_STATE_PATH,
+  ensureOhMyPluginCache,
+  getDeploymentId,
+  getDeploymentState,
+  refreshPluginCache,
+} = require("../plugin-refresh");
 
 const mkdir = (dir) => fs.mkdirSync(dir, { recursive: true });
 const write = (filePath, value = "x") => {
@@ -84,6 +90,51 @@ const run = () => {
     env: { RAILWAY_DEPLOYMENT_ID: "dep-2", ENABLE_OMO_REDEPLOY_REFRESH: "false" },
   });
   assert.deepEqual(disabled, { action: "skipped", reason: "refresh_disabled" });
+
+  const bin = path.join(dir, "bin");
+  const fake = path.join(bin, "npm");
+  const calls = path.join(dir, "npm-calls");
+  mkdir(bin);
+  fs.writeFileSync(fake, `#!/bin/sh
+set -eu
+echo "$*" >> "${calls}"
+dir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--prefix" ]; then
+    dir="$arg"
+    break
+  fi
+  prev="$arg"
+done
+mkdir -p "$dir/node_modules/oh-my-openagent"
+printf '{"name":"oh-my-openagent"}' > "$dir/node_modules/oh-my-openagent/package.json"
+`);
+  fs.chmodSync(fake, 0o755);
+
+  const warmCache = path.join(dir, "warm-cache");
+  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  const warm = ensureOhMyPluginCache({
+    cacheDir: warmCache,
+    env,
+  });
+  assert.equal(warm.action, "installed");
+  assert.equal(fs.existsSync(path.join(warm.dir, "node_modules", "oh-my-openagent", "package.json")), true);
+  assert.match(fs.readFileSync(calls, "utf8"), /oh-my-openagent@latest/);
+
+  fs.rmSync(calls, { force: true });
+  const ready = ensureOhMyPluginCache({
+    cacheDir: warmCache,
+    env,
+  });
+  assert.equal(ready.action, "noop");
+  assert.equal(fs.existsSync(calls), false);
+
+  const prewarmDisabled = ensureOhMyPluginCache({
+    cacheDir: warmCache,
+    env: { ...env, ENABLE_OMO_CACHE_PREWARM: "false" },
+  });
+  assert.deepEqual(prewarmDisabled, { action: "skipped", reason: "prewarm_disabled" });
 
   assert.ok(DEFAULT_STATE_PATH.includes("oh-my-plugin-refresh.json"));
   fs.rmSync(dir, { recursive: true, force: true });

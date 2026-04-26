@@ -12,7 +12,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { proxyWebSocketUpgrade } = require("./ws-proxy");
 const { resolveOpencodeLaunch } = require("./launch");
-const { refreshPluginCache } = require("./plugin-refresh");
+const { ensureOhMyPluginCache, refreshPluginCache } = require("./plugin-refresh");
 const { ensureRuntimeConfigs } = require("./runtime-config");
 const { isSourceMode } = require("./source-mode");
 
@@ -86,6 +86,22 @@ try {
   }
 } catch (err) {
   console.error("[wrapper] Failed to refresh oh-my plugin cache:", err.message);
+}
+
+try {
+  const result = ensureOhMyPluginCache();
+  if (result.action === "installed") {
+    console.log(`[wrapper] Installed oh-my plugin cache in ${result.dir}`);
+  }
+  if (result.action === "noop") {
+    console.log(`[wrapper] Oh-my plugin cache ready in ${result.dir}`);
+  }
+  if (result.action === "skipped") {
+    console.log(`[wrapper] Skipped oh-my plugin cache prewarm: ${result.reason}`);
+  }
+} catch (err) {
+  console.error("[wrapper] Failed to prewarm oh-my plugin cache:", err.message);
+  process.exit(1);
 }
 
 console.log(`Starting OpenCode Web on port ${PORT}...`);

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 const {
   OMO_LEGACY_PLUGIN_NAME,
@@ -10,6 +11,14 @@ const {
 const DEFAULT_CACHE_DIR = "/data/.cache/opencode";
 const DEFAULT_STATE_PATH = "/data/.local/state/opencode/oh-my-plugin-refresh.json";
 const DEPLOYMENT_KEYS = ["RAILWAY_DEPLOYMENT_ID", "RAILWAY_SNAPSHOT_ID"];
+const NPM_INSTALL_ARGS = [
+  "install",
+  "--save-prod",
+  "--save-prefix=",
+  "--ignore-scripts",
+  "--no-audit",
+  "--no-fund",
+];
 
 const readJson = (filePath, fallback) => {
   if (!fs.existsSync(filePath)) return fallback;
@@ -98,8 +107,45 @@ const refreshPluginCache = (opts = {}) => {
   return { action: "refreshed", deployment, removed };
 };
 
+const ensureOhMyPluginCache = (opts = {}) => {
+  const env = opts.env || process.env;
+  const cacheDir = opts.cacheDir || DEFAULT_CACHE_DIR;
+  const spec = opts.spec || OMO_PLUGIN;
+  const name = opts.name || OMO_PLUGIN_NAME;
+
+  if (env.ENABLE_OH_MY_OPENCODE === "false") {
+    return { action: "skipped", reason: "plugin_disabled" };
+  }
+
+  if (env.ENABLE_OMO_CACHE_PREWARM === "false") {
+    return { action: "skipped", reason: "prewarm_disabled" };
+  }
+
+  const dir = path.join(cacheDir, "packages", spec);
+  const pkg = path.join(dir, "node_modules", name, "package.json");
+  if (fs.existsSync(pkg)) {
+    return { action: "noop", dir };
+  }
+
+  fs.mkdirSync(dir, { recursive: true });
+  const result = spawnSync("npm", [...NPM_INSTALL_ARGS, "--prefix", dir, spec], {
+    encoding: "utf8",
+    env,
+  });
+  if (result.status !== 0) {
+    const msg = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+    throw new Error(msg || `npm install ${spec} failed with status ${result.status}`);
+  }
+  if (!fs.existsSync(pkg)) {
+    throw new Error(`npm install ${spec} completed but ${pkg} is missing`);
+  }
+
+  return { action: "installed", dir };
+};
+
 module.exports = {
   DEFAULT_STATE_PATH,
+  ensureOhMyPluginCache,
   getDeploymentState,
   getDeploymentId,
   refreshPluginCache,
