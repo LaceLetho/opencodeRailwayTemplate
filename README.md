@@ -44,7 +44,7 @@ Deploy OpenCode on Railway with the pieces that matter in production: pinned fro
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SOURCE_MODE` | `true` | Recommended. `true` builds from source and serves local web assets. `false` installs `opencode-ai@latest` and falls back to upstream hosted frontend behavior. |
-| `OPENCODE_REF` | `v1.3.0` | OpenCode git ref to build when `SOURCE_MODE=true`. |
+| `OPENCODE_REF` | `v1.14.25` | OpenCode git ref to build when `SOURCE_MODE=true`. |
 | `OPENCODE_MODEL` | - | Default model for OpenCode. |
 | `OPENCODE_SESSION_SECRET` | `OPENCODE_SERVER_PASSWORD` | Signing secret for browser session cookies. Set this explicitly if you run multiple instances. |
 | `AUTH_REALM` | `opencode.tradao.xyz` | Basic Auth realm. Usually no need to change it. |

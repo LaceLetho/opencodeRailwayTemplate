@@ -44,7 +44,7 @@
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `SOURCE_MODE` | `true` | 推荐保留默认值。`true` 表示从源码构建并提供本地 Web 静态资源；`false` 表示安装 `opencode-ai@latest`，并回到上游 hosted frontend 行为。 |
-| `OPENCODE_REF` | `v1.3.0` | `SOURCE_MODE=true` 时要构建的 OpenCode git ref。 |
+| `OPENCODE_REF` | `v1.14.25` | `SOURCE_MODE=true` 时要构建的 OpenCode git ref。 |
 | `OPENCODE_MODEL` | - | OpenCode 默认模型。 |
 | `OPENCODE_SESSION_SECRET` | `OPENCODE_SERVER_PASSWORD` | 浏览器 session cookie 的签名密钥。多实例部署时建议显式设置。 |
 | `AUTH_REALM` | `opencode.tradao.xyz` | Basic Auth realm，通常无需修改。 |
