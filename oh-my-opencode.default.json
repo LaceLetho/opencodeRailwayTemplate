@@ -15,6 +15,14 @@
         }
       ]
     },
+    "librarian": {
+      "model": "opencode-go/deepseek-v4-pro",
+      "variant": "high"
+    },
+    "explore": {
+      "model": "opencode-go/deepseek-v4-pro",
+      "variant": "high"
+    },
     "atlas": {
       "model": "opencode-go/deepseek-v4-pro",
       "variant": "max",
